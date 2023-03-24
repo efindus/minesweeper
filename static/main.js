@@ -3,6 +3,9 @@ if ('serviceWorker' in navigator)
 
 const canvas = document.getElementById('canvas');
 
+const flag = document.getElementById('flag');
+const mine = document.getElementById('mine');
+
 const menu = document.getElementById('menu');
 const settingsToggle = document.getElementById('settings-toggle');
 const settingsClose = document.getElementById('settings-close');
@@ -13,12 +16,13 @@ const restartButton = document.getElementById('restart-button');
  */
 const ctx = canvas.getContext('2d');
 
+// board: -1 => bomb, 0-8 => bomb count; state: 0 => covered, 1 => uncovered, 2 => flagged
 const d = {
 	pos: {
 		x: 0,
 		y: 0,
 	},
-	scale: 0.035,
+	scale: 0.025,
 	last: {
 		pos: {
 			x: 0,
@@ -33,6 +37,7 @@ const d = {
 	dragging: false,
 	settingsOpen: false,
 	board: [],
+	state: [],
 	width: 32,
 	height: 18,
 };
@@ -58,22 +63,43 @@ const renderCanvas = () => {
 	ctx.fillStyle = '#191a19';
 	ctx.fillRect(0, 0, width, height);
 
+	// Numbers and flags
+	ctx.fillStyle = '#bcd0e1';
 	ctx.font = `400 ${0.5 / d.scale}px Roboto, sans-serif`;
 	ctx.textAlign = 'center';
 	
+	ctx.beginPath();
+	const flags = [];
 	for (let pX = 0; pX < d.width; pX++) {
 		for (let pY = 0; pY < d.height; pY++) {
-			if (d.board[pX][pY] > 0) {
-				ctx.fillStyle = '#bcd0e1';
+			if (d.state[pX][pY] === 2) {
+				ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
+				flags.push({ x: pX, y: pY });
+			} else if (d.state[pX][pY] === 1 && d.board[pX][pY] > 0) {
 				ctx.fillText(`${d.board[pX][pY]}`, (pX - x + 0.5) / d.scale, (pY - y + 0.678) / d.scale);
 			}
-			// } else {
-			// 	ctx.fillStyle = 'white';
-			// 	ctx.fillRect((pX - x) / d.scale, (pY - y) / d.scale, 1 / d.scale, 1 / d.scale);
-			// }
 		}
 	}
 
+	ctx.fillStyle = '#808e9f';
+	ctx.fill();
+
+	for (const b of flags)
+		ctx.drawImage(flag, (b.x + 0.25 - x) / d.scale, (b.y + 0.25 - y) / d.scale, 0.5 / d.scale, 0.5 / d.scale);
+
+	// Fog
+	ctx.beginPath();
+	for (let pX = 0; pX < d.width; pX++) {
+		for (let pY = 0; pY < d.height; pY++) {
+			if (d.state[pX][pY] === 0)
+				ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
+		}
+	}
+
+	ctx.fillStyle = '#42a3cd';
+	ctx.fill();
+
+	// Grid
 	ctx.lineCap = 'round';
 	ctx.lineWidth = 0.025 / d.scale;
 	ctx.strokeStyle = '#374650';
@@ -94,22 +120,6 @@ const renderCanvas = () => {
 	}
 
 	ctx.stroke();
-
-	// ctx.strokeStyle = 'red';
-	// ctx.beginPath();
-	// for (let pX = 0; pX < d.width; pX++) {
-	// 	ctx.moveTo((pX - x + 0.5) / d.scale, (0 - y) / d.scale);
-	// 	ctx.lineTo((pX - x + 0.5) / d.scale, (d.height - y) / d.scale);
-	// }
-
-	// for (let pY = 0; pY < d.height; pY++) {
-	// 	for (const offset of [ 0.32, 0.4, 0.5, 0.6, 0.68 ]) {
-	// 		ctx.moveTo((0 - x) / d.scale, (pY - y + offset) / d.scale);
-	// 		ctx.lineTo((d.width - x) / d.scale, (pY - y + offset) / d.scale);
-	// 	}
-	// }
-
-	// ctx.stroke();
 };
 
 const updateCanvas = () => {
@@ -216,9 +226,9 @@ const getValNearby = (arr, val, x, y) => {
 	return res;
 };
 
-// -1 => bomb, 0-8 => bomb count
 const setupBoard = () => {
 	d.board = genBoard(-2, d.width, d.height);
+	d.state = genBoard(0, d.width, d.height);
 	
 	for (let bomb = 0; bomb < 150; bomb++) {
 		let x, y;
@@ -241,7 +251,8 @@ const load = () => {
 	setupBoard();
 
 	restartButton.onclick = () => {
-		// idk do sth
+		setupBoard();
+		renderCanvas();
 		toggleSettings(true);
 	};
 	menu.onclick = (e) => e.stopPropagation();
