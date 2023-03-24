@@ -44,6 +44,10 @@ html, body {
 	padding: 10px 20px 20px 20px;
 }
 
+.assets {
+	display: none;
+}
+
 .title {
 	font-size: 50px;
 	font-weight: 400;
@@ -91,7 +95,7 @@ html, body {
 	right: -10px;
 	width: 100vw;
 	height: 100vh;
-	background-color: rgba(0, 0, 0, 0.2);
+	background-color: rgba(0, 0, 0, 0.45);
 }
 
 #menu {
