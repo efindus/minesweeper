@@ -1,5 +1,5 @@
-if ('serviceWorker' in navigator)
-	navigator.serviceWorker.register('/sw.js');
+// if ('serviceWorker' in navigator)
+// 	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
 const timer = document.getElementById('timer');
@@ -55,6 +55,11 @@ const d = {
 		covered: 0,
 	},
 	timeSpent: 0,
+	touchState: {
+		evCache: [],
+		prevDiff: -1,
+		cancelOffset: false,
+	},
 };
 
 const updateTimer = ()  => {
@@ -225,18 +230,46 @@ const resetPosition = () => {
 };
 
 const pointerDownHandler = (event) => {
-	d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
-	d.dragging = true;
+	d.dragging = true, d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
 	d.last.clickTS = Date.now();
+
+	d.touchState.evCache.push(event);
 };
 
 const pointerMoveHandler = (event) => {
-	if (d.dragging) {
-		d.pos.x += (event.offsetX - d.last.pos.x);
-		d.pos.y += (event.offsetY - d.last.pos.y);
+	for (let i = 0; i < d.touchState.evCache.length; i++) {
+		if (event.pointerId == d.touchState.evCache[i].pointerId) {
+			d.touchState.evCache[i] = event;
+			break;
+		}
+	}
 
-		d.delta.x += Math.abs(event.offsetX - d.last.pos.x), d.delta.y += Math.abs(event.offsetY - d.last.pos.y);
-		d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY;
+	let offsetX = event.offsetX, offsetY = event.offsetY;
+	if (d.touchState.evCache.length === 2) {
+		const e1 = d.touchState.evCache[0], e2 = d.touchState.evCache[1];
+		const curDiff = Math.sqrt((e2.clientX - e1.clientX) ** 2 + (e2.clientY - e1.clientY) ** 2);
+		offsetX = (e1.clientX + e2.clientX) / 2, offsetY = (e1.clientY + e2.clientY) / 2;
+	
+		if (d.touchState.prevDiff > 0)
+			zoomHandler(offsetX, offsetY, (d.touchState.prevDiff - curDiff) * 2.5);
+		else if (d.touchState.prevDiff < 0)
+			d.last.pos.x = offsetX, d.last.pos.y = offsetY;
+
+		d.touchState.prevDiff = curDiff;
+	}
+
+	if (d.dragging) {
+		if (d.touchState.cancelOffset) {
+			d.touchState.cancelOffset = false;
+			d.last.pos.x = offsetX, d.last.pos.y = offsetY;
+		}
+
+		console.log('event', offsetX, offsetY, d.last.pos.x, d.last.pos.y);
+		d.pos.x += (offsetX - d.last.pos.x);
+		d.pos.y += (offsetY - d.last.pos.y);
+
+		d.delta.x += Math.abs(offsetX - d.last.pos.x), d.delta.y += Math.abs(offsetY - d.last.pos.y);
+		d.last.pos.x = offsetX, d.last.pos.y = offsetY;
 
 		if (d.delta.x ** 2 + d.delta.y ** 2 >= 100)
 			canvas.style.cursor = 'grabbing';
@@ -247,15 +280,32 @@ const pointerMoveHandler = (event) => {
 };
 
 const pointerCancelHandler = (event) => {
-	d.dragging = false;
 	canvas.style.cursor = 'default';
+	for (let i = 0; i < d.touchState.evCache.length; i++) {
+		if (d.touchState.evCache[i].pointerId === event.pointerId) {
+			d.touchState.evCache.splice(i, 1);
+			break;
+		}
+	}
+
+	if (d.touchState.evCache.length < 2) {
+		if (d.touchState.prevDiff >= 0)
+			d.touchState.cancelOffset = true;
+
+		d.touchState.prevDiff = -1;
+	}	
+
+	if (d.touchState.evCache.length === 0)
+		d.dragging = false;
 };
 
 const pointerUpHandler = (event) => {
 	pointerCancelHandler(event);
 
-	if (d.delta.x ** 2 + d.delta.y ** 2 < 100) {
+	if (d.touchState.evCache.length < 2 && d.delta.x ** 2 + d.delta.y ** 2 < 100) {
 		const pX = Math.floor(get('x', event.offsetX)), pY = Math.floor(get('y', event.offsetY));
+		if (!(0 <= pX && pX < d.settings.width && 0 <= pY && pY < d.settings.height))
+			return;
 
 		const clickLength = Date.now() - d.last.clickTS;
 
@@ -308,8 +358,8 @@ const zoomHandler = (x, y, delta) => {
 	d.scale *= (1 + 0.001 * delta);
 	if (d.scale < 0.003)
 		d.scale = 0.003;
-	else if (d.scale > 0.04)
-		d.scale = 0.04;
+	else if (d.scale > 0.05)
+		d.scale = 0.05;
 
 	// Keep mouse position constant
 	d.pos.x = -((preX / d.scale) - x), d.pos.y = -((preY / d.scale) - y);
@@ -470,6 +520,9 @@ const setupGame = () => {
 };
 
 const load = () => {
+	if (canvas.clientHeight > canvas.clientWidth)
+		[ d.settings.height, d.settings.width ] = [ d.settings.width, d.settings.height ];
+
 	setupGame();
 
 	restartButton.onclick = () => {
