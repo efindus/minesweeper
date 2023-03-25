@@ -18,7 +18,7 @@ const restartButton = document.getElementById('restart-button');
  */
 const ctx = canvas.getContext('2d');
 
-// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; state.s: 0 => covered, 1 => uncovered, 2 => flagged
+// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; board.s: 0 => covered, 1 => uncovered, 2 => flagged
 const d = {
 	gameState: 0,
 	pos: {
@@ -193,8 +193,9 @@ const renderCanvas = () => {
 const updateCanvas = () => {
 	const widthDiff = d.last.canvas.width - canvas.clientWidth, heightDiff = d.last.canvas.height - canvas.clientHeight;
 	if (widthDiff || heightDiff) {
-		canvas.setAttribute('width', canvas.clientWidth);
-		canvas.setAttribute('height', canvas.clientHeight);
+		canvas.setAttribute('width', canvas.clientWidth * window.devicePixelRatio);
+		canvas.setAttribute('height', canvas.clientHeight * window.devicePixelRatio);
+		ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
 
 		d.last.canvas.width = canvas.clientWidth, d.last.canvas.height = canvas.clientHeight;
 		d.pos.x -= widthDiff / 2, d.pos.y -= heightDiff / 2;
@@ -223,40 +224,107 @@ const resetPosition = () => {
 	d.scale = 0.025, d.pos.x = -(d.settings.width / (2 * d.scale)) + (d.last.canvas.width / 2), d.pos.y = -(d.settings.height / (2 * d.scale)) + (d.last.canvas.height / 2);
 };
 
-canvas.addEventListener('mousemove', (event) => {
+const pointerDownHandler = (event) => {
+	d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
+	d.dragging = true;
+	d.last.clickTS = Date.now();
+};
+
+const pointerMoveHandler = (event) => {
 	if (d.dragging) {
 		d.pos.x += (event.offsetX - d.last.pos.x);
 		d.pos.y += (event.offsetY - d.last.pos.y);
 
-		d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x += Math.abs(event.offsetX), d.delta.y += Math.abs(event.offsetY);
+		d.delta.x += Math.abs(event.offsetX - d.last.pos.x), d.delta.y += Math.abs(event.offsetY - d.last.pos.y);
+		d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY;
+
 		if (d.delta.x ** 2 + d.delta.y ** 2 >= 100)
 			canvas.style.cursor = 'grabbing';
 
 		constrainPosition();
 		renderCanvas();
 	}
-});
+};
 
-canvas.addEventListener('wheel', (event) => {
-	const preX = get('x', event.offsetX), preY = get('y', event.offsetY);
-	d.scale *= (1 + 0.001 * event.deltaY);
+const pointerCancelHandler = (event) => {
+	d.dragging = false;
+	canvas.style.cursor = 'default';
+};
+
+const pointerUpHandler = (event) => {
+	pointerCancelHandler(event);
+
+	if (d.delta.x ** 2 + d.delta.y ** 2 < 100) {
+		const pX = Math.floor(get('x', event.offsetX)), pY = Math.floor(get('y', event.offsetY));
+
+		const clickLength = Date.now() - d.last.clickTS;
+
+		let flag = false;
+		if (event.pointerType === 'mouse' && clickLength < 250) {
+			if (event.button === 0) {
+				if (d.settings.flaggingMode)
+		 			flag = true;
+			} else if (event.button === 2) {
+				if (!d.settings.flaggingMode)
+		 			flag = true;
+			}
+		} else if (event.pointerType === 'touch') {
+			if (clickLength < 250) {
+				if (d.settings.flaggingMode)
+					flag = true;
+			} else if (250 <= clickLength) {
+				if (!d.settings.flaggingMode)
+					flag = true;
+			}
+		}
+
+		if (flag && d.gameState === 1 && d.board[pX][pY].s !== 1)
+			flagTile(pX, pY);
+		else if (d.gameState !== 2 && d.gameState !== 3)
+			uncoverTile(pX, pY);
+
+		if (d.count.covered === d.settings.bombs - d.count.flags && d.gameState === 1) {
+			d.gameState = 3;
+
+			resetPosition();
+			clearInterval(timerInterval);
+			title.innerHTML = 'You won!';
+
+			for (let x = 0; x < d.settings.width; x++) {
+				for (let y = 0; y < d.settings.height; y++) {
+					if (d.board[x][y].s === 0)
+						d.board[x][y].s = 2;
+				}
+			}
+		} 
+
+		renderCanvas();
+	}
+	
+};
+
+const zoomHandler = (x, y, delta) => {
+	const preX = get('x', x), preY = get('y', y);
+	d.scale *= (1 + 0.001 * delta);
 	if (d.scale < 0.003)
 		d.scale = 0.003;
 	else if (d.scale > 0.04)
 		d.scale = 0.04;
 
 	// Keep mouse position constant
-	d.pos.x = -((preX / d.scale) - event.offsetX), d.pos.y = -((preY / d.scale) - event.offsetY);
+	d.pos.x = -((preX / d.scale) - x), d.pos.y = -((preY / d.scale) - y);
 	constrainPosition();
 	renderCanvas();
-});
+};
 
-canvas.addEventListener('mousedown', (event) => {
-	d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
-	d.dragging = true;
-	d.last.clickTS = Date.now();
-	
-});
+document.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => zoomHandler(e.offsetX, e.offsetY, e.deltaY));
+canvas.addEventListener('pointerdown', pointerDownHandler);
+canvas.addEventListener('pointermove', pointerMoveHandler);
+document.addEventListener('pointerup', pointerUpHandler);
+document.addEventListener('pointercancel', pointerCancelHandler);
+document.addEventListener('pointerout', pointerCancelHandler);
+document.addEventListener('pointerleave', pointerCancelHandler);
 
 const flagTile = (x, y) => {
 	if (d.board[x][y].s === 1)
@@ -317,60 +385,6 @@ const uncoverTile = (x, y, user = true) => {
 		}
 	}
 };
-
-document.addEventListener('contextmenu', e => e.preventDefault());
-
-document.addEventListener('mouseup', (event) => {
-	d.dragging = false;
-	canvas.style.cursor = 'default';
-
-	if (d.delta.x ** 2 + d.delta.y ** 2 < 100) {
-		const pX = Math.floor(get('x', event.offsetX)), pY = Math.floor(get('y', event.offsetY));
-
-		const clickLength = Date.now() - d.last.clickTS;
-
-		let flag = false;
-		// if (clickLength < 250) {
-		// 	if (d.flaggingMode)
-		// 		flag = true;
-		// } else if (250 <= clickLength) {
-		// 	if (!d.flaggingMode)
-		// 		flag = true;
-		// }
-		if (clickLength < 250) {
-			if (event.button === 0) {
-				if (d.settings.flaggingMode)
-		 			flag = true;
-			} else if (event.button === 2) {
-				if (!d.settings.flaggingMode)
-		 			flag = true;
-			}
-		}
-
-		if (flag && d.gameState === 1 && d.board[pX][pY].s !== 1)
-			flagTile(pX, pY);
-		else if (d.gameState !== 2 && d.gameState !== 3)
-			uncoverTile(pX, pY);
-
-		if (d.count.covered === d.settings.bombs - d.count.flags && d.gameState === 1) {
-			d.gameState = 3;
-
-			resetPosition();
-			clearInterval(timerInterval);
-			title.innerHTML = 'You won!';
-
-			for (let x = 0; x < d.settings.width; x++) {
-				for (let y = 0; y < d.settings.height; y++) {
-					if (d.board[x][y].s === 0)
-						d.board[x][y].s = 2;
-				}
-			}
-		} 
-
-		renderCanvas();
-	}
-	
-});
 
 const toggleSettings = (forceClose = false) => {
 	if (forceClose)

@@ -28,10 +28,7 @@ html, body {
 	background-color: #191a19;
 	font-size: 25px;
 	font-family: 'Roboto', sans-serif;
-	overscroll-behavior-y: none;
-	/* WebKit is fucking stupid: */
-	position: fixed;
-	overflow: hidden;
+	touch-action: none;
 }
 
 .container {
@@ -60,7 +57,6 @@ html, body {
 #canvas {
 	width: 100%;
 	height: 100%;
-	image-rendering: pixelated;
 }
 
 #timer {
