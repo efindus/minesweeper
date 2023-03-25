@@ -1,5 +1,5 @@
-if ('serviceWorker' in navigator)
-	navigator.serviceWorker.register('/sw.js');
+// if ('serviceWorker' in navigator)
+// 	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
 const canvas = document.getElementById('canvas');
@@ -275,7 +275,9 @@ const uncoverTile = (x, y, user = true) => {
 			squareRun(d.board, x, y, (_, pX, pY) => uncoverTile(pX, pY, false));
 		}
 	} else {
-		d.state[x][y] = 1, d.coveredCount--;
+		if (d.state[x][y] === 0)
+			d.state[x][y] = 1, d.coveredCount--;
+
 		if (d.board[x][y] === -1) {
 			d.gameState = 2;
 			resetPosition();
