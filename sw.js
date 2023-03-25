@@ -1,4 +1,4 @@
-const versionNumber = 'v2';
+const versionNumber = 'v3';
 
 self.addEventListener('install', event => {
 	event.waitUntil(
@@ -11,6 +11,7 @@ self.addEventListener('install', event => {
 				'/static/logo/128.png',
 				'/static/logo/192.png',
 				'/static/logo/192m.png',
+				'/static/logo/512.png',
 				'/static/logo/1337.png',
 				'/static/roboto/300.ttf',
 				'/static/roboto/400.ttf',
