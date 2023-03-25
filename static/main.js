@@ -229,11 +229,16 @@ const resetPosition = () => {
 	d.scale = 0.025, d.pos.x = -(d.settings.width / (2 * d.scale)) + (d.last.canvas.width / 2), d.pos.y = -(d.settings.height / (2 * d.scale)) + (d.last.canvas.height / 2);
 };
 
+let longpressTimeout;
 const pointerDownHandler = (event) => {
 	d.dragging = true, d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
 	d.last.clickTS = Date.now();
 
 	d.touchState.evCache.push(event);
+	if (d.touchState.evCache.length > 1)
+		clearTimeout(longpressTimeout);
+	else
+		longpressTimeout = setTimeout(() => navigator.vibrate(100), 250);
 };
 
 const pointerMoveHandler = (event) => {
@@ -271,8 +276,10 @@ const pointerMoveHandler = (event) => {
 		d.delta.x += Math.abs(offsetX - d.last.pos.x), d.delta.y += Math.abs(offsetY - d.last.pos.y);
 		d.last.pos.x = offsetX, d.last.pos.y = offsetY;
 
-		if (d.delta.x ** 2 + d.delta.y ** 2 >= 100)
+		if (d.delta.x ** 2 + d.delta.y ** 2 >= 100) {
 			canvas.style.cursor = 'grabbing';
+			clearTimeout(longpressTimeout);
+		}
 
 		constrainPosition();
 		renderCanvas();
@@ -308,6 +315,7 @@ const pointerUpHandler = (event) => {
 			return;
 
 		const clickLength = Date.now() - d.last.clickTS;
+		clearTimeout(longpressTimeout);
 
 		let flag = false;
 		if (event.pointerType === 'mouse' && clickLength < 250) {
