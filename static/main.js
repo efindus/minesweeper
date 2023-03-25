@@ -1,5 +1,5 @@
-// if ('serviceWorker' in navigator)
-// 	navigator.serviceWorker.register('/sw.js');
+if ('serviceWorker' in navigator)
+	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
 const timer = document.getElementById('timer');
