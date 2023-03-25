@@ -6,16 +6,17 @@ self.addEventListener('install', event => {
 			return cache.addAll([
 				'/',
 				'/index.html',
-				'/favicon.ico',
+				'/static/assets/flag.svg',
+				'/static/assets/mine.svg',
 				'/static/logo/128.png',
 				'/static/logo/192.png',
 				'/static/logo/192m.png',
 				'/static/logo/1337.png',
-				'/static/main.js',
-				'/static/main.css',
-				'/static/manifest.json',
 				'/static/roboto/300.ttf',
 				'/static/roboto/400.ttf',
+				'/static/main.css',
+				'/static/main.js',
+				'/static/manifest.json',
 			]);
 		})
 	);
