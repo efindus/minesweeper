@@ -17,10 +17,14 @@ const restartButton = document.getElementById('restart-button');
  */
 const ctx = canvas.getContext('2d');
 
-// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board: -1 => bomb, 0-8 => bomb count; state: 0 => covered, 1 => uncovered, 2 => flagged
+// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; state.s: 0 => covered, 1 => uncovered, 2 => flagged
 const d = {
 	gameState: 0,
 	pos: {
+		x: 0,
+		y: 0,
+	},
+	delta: {
 		x: 0,
 		y: 0,
 	},
@@ -30,26 +34,25 @@ const d = {
 			x: 0,
 			y: 0,
 		},
-		delta: {
-			x: 0,
-			y: 0,
-		},
-		canvasSize: {
+		canvas: {
 			width: 0,
 			height: 0,
 		},
 		clickTS: 0,
 	},
 	dragging: false,
-	flaggingMode: true,
-	settingsOpen: false,
 	board: [],
-	state: [],
-	width: 32,
-	height: 18,
-	bombCount: 100,
-	flagCount: 0,
-	coveredCount: 0,
+	settings: {
+		open: false,
+		flaggingMode: true,
+		width: 32,
+		height: 18,
+		bombs: 100,
+	},
+	count: {
+		flag: 0,
+		covered: 0,
+	},
 };
 
 const random = (min, max) => Math.round(min + (max - min) * Math.random());
@@ -74,7 +77,7 @@ const renderCanvas = () => {
 	if (d.gameState === 0) {
 		// Not started
 		ctx.beginPath();
-		ctx.roundRect((0 - x) / d.scale, (0 - y) / d.scale, d.width / d.scale, d.height / d.scale, 0.1 / d.scale);
+		ctx.roundRect((0 - x) / d.scale, (0 - y) / d.scale, d.settings.width / d.scale, d.settings.height / d.scale, 0.1 / d.scale);
 
 		ctx.fillStyle = '#42a3cd';
 		ctx.fill();
@@ -82,7 +85,7 @@ const renderCanvas = () => {
 		ctx.fillStyle = '#191a19';
 		ctx.font = `400 ${1 / d.scale}px Roboto, sans-serif`;
 		ctx.textAlign = 'center';
-		ctx.fillText(`Click to begin.`, ((d.width / 2) - x) / d.scale, ((d.height / 2) - y) / d.scale);
+		ctx.fillText(`Click to begin.`, ((d.settings.width / 2) - x) / d.scale, ((d.settings.height / 2) - y) / d.scale);
 		return;
 	}
 
@@ -93,13 +96,13 @@ const renderCanvas = () => {
 	
 	ctx.beginPath();
 	const flags = [];
-	for (let pX = 0; pX < d.width; pX++) {
-		for (let pY = 0; pY < d.height; pY++) {
-			if (d.state[pX][pY] === 2) {
+	for (let pX = 0; pX < d.settings.width; pX++) {
+		for (let pY = 0; pY < d.settings.height; pY++) {
+			if (d.board[pX][pY].s === 2) {
 				ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
 				flags.push({ x: pX, y: pY });
-			} else if (d.state[pX][pY] === 1 && d.board[pX][pY] > 0) {
-				ctx.fillText(`${d.board[pX][pY]}`, (pX - x + 0.5) / d.scale, (pY - y + 0.678) / d.scale);
+			} else if (d.board[pX][pY].s === 1 && d.board[pX][pY].d > 0) {
+				ctx.fillText(`${d.board[pX][pY].d}`, (pX - x + 0.5) / d.scale, (pY - y + 0.678) / d.scale);
 			}
 		}
 	}
@@ -107,14 +110,18 @@ const renderCanvas = () => {
 	ctx.fillStyle = '#808e9f';
 	ctx.fill();
 
-	for (const f of flags)
-		ctx.drawImage(flagImage, (f.x + 0.25 - x) / d.scale, (f.y + 0.25 - y) / d.scale, 0.5 / d.scale, 0.5 / d.scale);
+	for (const f of flags) {
+		if (d.gameState === 2 && d.board[f.x][f.y].d === -1)
+			ctx.drawImage(mineImage, (f.x + 0.225 - x) / d.scale, (f.y + 0.225 - y) / d.scale, 0.55 / d.scale, 0.55 / d.scale);
+		else
+			ctx.drawImage(flagImage, (f.x + 0.25 - x) / d.scale, (f.y + 0.25 - y) / d.scale, 0.5 / d.scale, 0.5 / d.scale);
+	}
 	
 	// Fog
 	ctx.beginPath();
-	for (let pX = 0; pX < d.width; pX++) {
-		for (let pY = 0; pY < d.height; pY++) {
-			if (d.state[pX][pY] === 0)
+	for (let pX = 0; pX < d.settings.width; pX++) {
+		for (let pY = 0; pY < d.settings.height; pY++) {
+			if (d.board[pX][pY].s === 0)
 				ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
 		}
 	}
@@ -125,15 +132,15 @@ const renderCanvas = () => {
 	if (d.gameState === 2) {
 		ctx.beginPath();
 		const bombs = [];
-		for (let pX = 0; pX < d.width; pX++) {
-			for (let pY = 0; pY < d.height; pY++) {
-				if (d.board[pX][pY] !== -1)
+		for (let pX = 0; pX < d.settings.width; pX++) {
+			for (let pY = 0; pY < d.settings.height; pY++) {
+				if (d.board[pX][pY].d !== -1)
 					continue;
 
-				if (d.state[pX][pY] !== 2)
+				if (d.board[pX][pY].s !== 2)
 					bombs.push({ x: pX, y: pY });
 
-				if (d.state[pX][pY] === 1)
+				if (d.board[pX][pY].s === 1)
 					ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
 			}
 		}
@@ -151,15 +158,15 @@ const renderCanvas = () => {
 	ctx.strokeStyle = '#374650';
 
 	ctx.beginPath();
-	for (let pX = 1; pX < d.width; pX++) {
-		for (let pY = 0; pY < d.height; pY++) {
+	for (let pX = 1; pX < d.settings.width; pX++) {
+		for (let pY = 0; pY < d.settings.height; pY++) {
 			ctx.moveTo((pX - x) / d.scale, (pY + 0.15 - y) / d.scale);
 			ctx.lineTo((pX - x) / d.scale, (pY + 0.85 - y) / d.scale);
 		}
 	}
 
-	for (let pY = 1; pY < d.height; pY++) {
-		for (let pX = 0; pX < d.width; pX++) {
+	for (let pY = 1; pY < d.settings.height; pY++) {
+		for (let pX = 0; pX < d.settings.width; pX++) {
 			ctx.moveTo((pX + 0.15 - x) / d.scale, (pY - y) / d.scale);
 			ctx.lineTo((pX + 0.85 - x) / d.scale, (pY - y) / d.scale);
 		}
@@ -169,12 +176,12 @@ const renderCanvas = () => {
 };
 
 const updateCanvas = () => {
-	const widthDiff = d.last.canvasSize.width - canvas.clientWidth, heightDiff = d.last.canvasSize.height - canvas.clientHeight;
+	const widthDiff = d.last.canvas.width - canvas.clientWidth, heightDiff = d.last.canvas.height - canvas.clientHeight;
 	if (widthDiff || heightDiff) {
 		canvas.setAttribute('width', canvas.clientWidth);
 		canvas.setAttribute('height', canvas.clientHeight);
 
-		d.last.canvasSize.width = canvas.clientWidth, d.last.canvasSize.height = canvas.clientHeight;
+		d.last.canvas.width = canvas.clientWidth, d.last.canvas.height = canvas.clientHeight;
 		d.pos.x -= widthDiff / 2, d.pos.y -= heightDiff / 2;
 	}
 
@@ -182,20 +189,20 @@ const updateCanvas = () => {
 };
 
 const constrainPosition = () => {
-	const sX = (d.last.canvasSize.width / 2), sY = (d.last.canvasSize.height / 2);
+	const sX = (d.last.canvas.width / 2), sY = (d.last.canvas.height / 2);
 	if (sX - d.pos.x < 0)
 		d.pos.x = sX;
-	else if (sX - d.pos.x > d.width / d.scale)
-		d.pos.x = -(d.width / d.scale) + sX;
+	else if (sX - d.pos.x > d.settings.width / d.scale)
+		d.pos.x = -(d.settings.width / d.scale) + sX;
 
 	if (sY - d.pos.y < 0)
 		d.pos.y = sY;
-	else if (sY - d.pos.y > d.height / d.scale)
-		d.pos.y = -(d.height / d.scale) + sY;
+	else if (sY - d.pos.y > d.settings.height / d.scale)
+		d.pos.y = -(d.settings.height / d.scale) + sY;
 };
 
 const resetPosition = () => {
-	d.scale = 0.025, d.pos.x = -(d.width / (2 * d.scale)) + (d.last.canvasSize.width / 2), d.pos.y = -(d.height / (2 * d.scale)) + (d.last.canvasSize.height / 2);
+	d.scale = 0.025, d.pos.x = -(d.settings.width / (2 * d.scale)) + (d.last.canvas.width / 2), d.pos.y = -(d.settings.height / (2 * d.scale)) + (d.last.canvas.height / 2);
 };
 
 const canvasOnResize = new ResizeObserver(updateCanvas);
@@ -206,8 +213,8 @@ canvas.addEventListener('mousemove', (event) => {
 		d.pos.x += (event.offsetX - d.last.pos.x);
 		d.pos.y += (event.offsetY - d.last.pos.y);
 
-		d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.last.delta.x += Math.abs(event.offsetX), d.last.delta.y += Math.abs(event.offsetY);
-		if (d.last.delta.x ** 2 + d.last.delta.y ** 2 >= 100)
+		d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x += Math.abs(event.offsetX), d.delta.y += Math.abs(event.offsetY);
+		if (d.delta.x ** 2 + d.delta.y ** 2 >= 100)
 			canvas.style.cursor = 'grabbing';
 
 		constrainPosition();
@@ -230,60 +237,60 @@ canvas.addEventListener('wheel', (event) => {
 });
 
 canvas.addEventListener('mousedown', (event) => {
-	d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.last.delta.x = 0, d.last.delta.y = 0;
+	d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
 	d.dragging = true;
 	d.last.clickTS = Date.now();
 	
 });
 
 const flagTile = (x, y) => {
-	if (d.state[x][y] === 1)
+	if (d.board[x][y].s === 1)
 		return;
 
-	if (d.state[x][y] === 0)
-		d.state[x][y] = 2, d.flagCount++, d.coveredCount--;
+	if (d.board[x][y].s === 0)
+		d.board[x][y].s = 2, d.count.flags++, d.count.covered--;
 	else
-		d.state[x][y] = 0, d.flagCount--, d.coveredCount++;
+		d.board[x][y].s = 0, d.count.flags--, d.count.covered++;
 
-	title.innerHTML = `${d.bombCount - d.flagCount}`;
+	title.innerHTML = `${d.settings.bombs - d.count.flags}`;
 };
 
 const uncoverTile = (x, y, user = true) => {
-	if (d.state[x][y] === 2 || (!user && d.state[x][y] === 1))
+	if (d.board[x][y].s === 2 || (!user && d.board[x][y].s === 1))
 		return;
 
 	if (d.gameState === 0) {
 		d.gameState = 1;
-		title.innerHTML = `${d.bombCount - d.flagCount}`;
+		title.innerHTML = `${d.settings.bombs - d.count.flags}`;
 	}
 
-	if (d.state[x][y] === 1 && d.board[x][y] > 0) {
+	if (d.board[x][y].s === 1 && d.board[x][y].d > 0) {
 		let flags = 0, covered = 0;
-		squareRun(d.state, x, y, (val) => {
-			if (val === 2)
+		squareRun(d.board, x, y, (val) => {
+			if (val.s === 2)
 				flags++;
-			else if (val === 0)
+			else if (val.s === 0)
 				covered++;
 		});
 
-		if (flags + covered === d.board[x][y] && user) {
-			squareRun(d.state, x, y, (val, pX, pY) => {
-				if (val === 0)
+		if (flags + covered === d.board[x][y].d && user) {
+			squareRun(d.board, x, y, (val, pX, pY) => {
+				if (val.s === 0)
 					flagTile(pX, pY);
 			});
-		} else if (flags === d.board[x][y]) {
+		} else if (flags === d.board[x][y].d) {
 			squareRun(d.board, x, y, (_, pX, pY) => uncoverTile(pX, pY, false));
 		}
 	} else {
-		if (d.state[x][y] === 0)
-			d.state[x][y] = 1, d.coveredCount--;
+		if (d.board[x][y].s === 0)
+			d.board[x][y].s = 1, d.count.covered--;
 
-		if (d.board[x][y] === -1) {
+		if (d.board[x][y].d === -1) {
 			d.gameState = 2;
 			resetPosition();
 
 			title.innerHTML = 'You lost!';
-		} else if (d.board[x][y] === 0) {
+		} else if (d.board[x][y].d === 0) {
 			squareRun(d.board, x, y, (_, pX, pY) => uncoverTile(pX, pY, false));
 		}
 	}
@@ -295,7 +302,7 @@ document.addEventListener('mouseup', (event) => {
 	d.dragging = false;
 	canvas.style.cursor = 'default';
 
-	if (d.last.delta.x ** 2 + d.last.delta.y ** 2 < 100) {
+	if (d.delta.x ** 2 + d.delta.y ** 2 < 100) {
 		const pX = Math.floor(get('x', event.offsetX)), pY = Math.floor(get('y', event.offsetY));
 
 		const clickLength = Date.now() - d.last.clickTS;
@@ -310,28 +317,28 @@ document.addEventListener('mouseup', (event) => {
 		// }
 		if (clickLength < 250) {
 			if (event.button === 0) {
-				if (d.flaggingMode)
+				if (d.settings.flaggingMode)
 		 			flag = true;
 			} else if (event.button === 2) {
-				if (!d.flaggingMode)
+				if (!d.settings.flaggingMode)
 		 			flag = true;
 			}
 		}
 
-		if (flag && d.gameState === 1 && d.state[pX][pY] !== 1)
+		if (flag && d.gameState === 1 && d.board[pX][pY].s !== 1)
 			flagTile(pX, pY);
 		else if (d.gameState !== 2 && d.gameState !== 3)
 			uncoverTile(pX, pY);
 
-		if (d.coveredCount === d.bombCount - d.flagCount && d.gameState === 1) {
+		if (d.count.covered === d.settings.bombs - d.count.flags && d.gameState === 1) {
 			d.gameState = 3;
 			title.innerHTML = 'You won!';
 			resetPosition();
 
-			for (let x = 0; x < d.width; x++) {
-				for (let y = 0; y < d.height; y++) {
-					if (d.state[x][y] === 0)
-						d.state[x][y] = 2;
+			for (let x = 0; x < d.settings.width; x++) {
+				for (let y = 0; y < d.settings.height; y++) {
+					if (d.board[x][y].s === 0)
+						d.board[x][y].s = 2;
 				}
 			}
 		} 
@@ -343,18 +350,19 @@ document.addEventListener('mouseup', (event) => {
 
 const toggleSettings = (forceClose = false) => {
 	if (forceClose)
-		d.settingsOpen = false;
+		d.settings.open = false;
 	else
-		d.settingsOpen ^= true;
+		d.settings.open ^= true;
 
-	if (d.settingsOpen)
+	if (d.settings.open)
 		menu.style.display = 'flex', settingsClose.style.display = 'block', settingsToggle.style.color = '#bac0c8';
 	else
 		menu.style.display = 'none', settingsClose.style.display = 'none', settingsToggle.style.color = '';
 };
 
 const genBoard = (val, width, height) => {
-	return Array(width).fill(0).map(() => Array(height).fill(val));
+	const strVal = JSON.stringify(val);
+	return Array(width).fill(0).map(() => Array(height).fill(0).map(() => JSON.parse(strVal)));
 };
 
 /**
@@ -375,43 +383,32 @@ const squareRun = (arr, x, y, func) => {
 	}
 };
 
-/**
- * @param {any[][]} arr 
- * @param {any} val 
- * @param {number} x 
- * @param {number} y 
- */
-const getValNearby = (arr, val, x, y) => {
-	let res = 0;
-	squareRun(arr, x, y, v => {
-		if (v === val)
-			res++;
-	});
-
-	return res;
-};
-
 const setupGame = () => {
 	resetPosition();
-	d.gameState = 0, d.flagCount = 0, d.coveredCount = d.width * d.height;
+	d.gameState = 0, d.count.flags = 0, d.count.covered = d.settings.width * d.settings.height;
 	title.innerHTML = 'Minesweeper';
 
-	d.board = genBoard(-2, d.width, d.height);
-	d.state = genBoard(0, d.width, d.height);
-	
-	for (let bomb = 0; bomb < d.bombCount; bomb++) {
+	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
+	for (let bomb = 0; bomb < d.settings.bombs; bomb++) {
 		let x, y;
 		do {
-			x = random(0, d.width - 1), y = random(0, d.height - 1);
-		} while (d.board[x][y] === -1);
+			x = random(0, d.settings.width - 1), y = random(0, d.settings.height - 1);
+		} while (d.board[x][y].d === -1);
 
-		d.board[x][y] = -1;
+		d.board[x][y].d = -1;
 	}
 
-	for (let x = 0; x < d.width; x++) {
-		for (let y = 0; y < d.height; y++) {
-			if (d.board[x][y] !== -1)
-				d.board[x][y] = getValNearby(d.board, -1, x, y);
+	for (let x = 0; x < d.settings.width; x++) {
+		for (let y = 0; y < d.settings.height; y++) {
+			if (d.board[x][y].d !== -1) {
+				let res = 0;
+				squareRun(d.board, x, y, v => {
+					if (v.d === -1)
+						res++;
+				});
+
+				d.board[x][y].d = res;
+			}
 		}
 	}
 };
