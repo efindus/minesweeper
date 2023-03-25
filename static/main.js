@@ -277,6 +277,8 @@ const uncoverTile = (x, y, user = true) => {
 	if (d.gameState === 0) {
 		d.gameState = 1;
 		title.innerHTML = `${d.settings.bombs - d.count.flags}`;
+		generateMines(x, y);
+
 		timerInterval = setInterval(() => {
 			d.timeSpent++;
 			updateTimer();
@@ -382,6 +384,42 @@ const toggleSettings = (forceClose = false) => {
 		menu.style.display = 'none', settingsClose.style.display = 'none', settingsToggle.style.color = '';
 };
 
+const generateMines = (startX, startY) => {
+	// Protect a 3x3 area around the starting pos
+	d.board[startX][startY].d = -1;
+	squareRun(d.board, startX, startY, (val) => {
+		val.d = -1;
+	});
+
+	for (let bomb = 0; bomb < d.settings.bombs; bomb++) {
+		let x, y;
+		do {
+			x = random(0, d.settings.width - 1), y = random(0, d.settings.height - 1);
+		} while (d.board[x][y].d === -1);
+
+		d.board[x][y].d = -1;
+	}
+
+	d.board[startX][startY].d = -2;
+	squareRun(d.board, startX, startY, (val) => {
+		val.d = -2;
+	});
+
+	for (let x = 0; x < d.settings.width; x++) {
+		for (let y = 0; y < d.settings.height; y++) {
+			if (d.board[x][y].d !== -1) {
+				let res = 0;
+				squareRun(d.board, x, y, (val) => {
+					if (val.d === -1)
+						res++;
+				});
+
+				d.board[x][y].d = res;
+			}
+		}
+	}
+};
+
 const genBoard = (val, width, height) => {
 	const strVal = JSON.stringify(val);
 	return Array(width).fill(0).map(() => Array(height).fill(0).map(() => JSON.parse(strVal)));
@@ -415,28 +453,6 @@ const setupGame = () => {
 	updateTimer();
 
 	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
-	for (let bomb = 0; bomb < d.settings.bombs; bomb++) {
-		let x, y;
-		do {
-			x = random(0, d.settings.width - 1), y = random(0, d.settings.height - 1);
-		} while (d.board[x][y].d === -1);
-
-		d.board[x][y].d = -1;
-	}
-
-	for (let x = 0; x < d.settings.width; x++) {
-		for (let y = 0; y < d.settings.height; y++) {
-			if (d.board[x][y].d !== -1) {
-				let res = 0;
-				squareRun(d.board, x, y, v => {
-					if (v.d === -1)
-						res++;
-				});
-
-				d.board[x][y].d = res;
-			}
-		}
-	}
 };
 
 const load = () => {
