@@ -2,6 +2,7 @@
 // 	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
+const timer = document.getElementById('timer');
 const canvas = document.getElementById('canvas');
 
 const flagImage = document.getElementById('flag');
@@ -50,9 +51,23 @@ const d = {
 		bombs: 100,
 	},
 	count: {
-		flag: 0,
+		flags: 0,
 		covered: 0,
 	},
+	timeSpent: 0,
+};
+
+const updateTimer = ()  => {
+	const seconds = d.timeSpent % 60, minutes = Math.floor(d.timeSpent / 60) % 60, hours = Math.floor(Math.floor(d.timeSpent / 60) / 60);
+	
+	let display = `${seconds}S`;
+	if (seconds !== d.timeSpent)
+		display = `${minutes}M ${display}`;
+
+	if (minutes !== Math.floor(d.timeSpent / 60))
+		display = `${hours}H ${display}`;
+
+	timer.innerHTML = display;
 };
 
 const random = (min, max) => Math.round(min + (max - min) * Math.random());
@@ -188,6 +203,9 @@ const updateCanvas = () => {
 	renderCanvas();
 };
 
+const canvasOnResize = new ResizeObserver(updateCanvas);
+canvasOnResize.observe(canvas);
+
 const constrainPosition = () => {
 	const sX = (d.last.canvas.width / 2), sY = (d.last.canvas.height / 2);
 	if (sX - d.pos.x < 0)
@@ -204,9 +222,6 @@ const constrainPosition = () => {
 const resetPosition = () => {
 	d.scale = 0.025, d.pos.x = -(d.settings.width / (2 * d.scale)) + (d.last.canvas.width / 2), d.pos.y = -(d.settings.height / (2 * d.scale)) + (d.last.canvas.height / 2);
 };
-
-const canvasOnResize = new ResizeObserver(updateCanvas);
-canvasOnResize.observe(canvas);
 
 canvas.addEventListener('mousemove', (event) => {
 	if (d.dragging) {
@@ -262,6 +277,10 @@ const uncoverTile = (x, y, user = true) => {
 	if (d.gameState === 0) {
 		d.gameState = 1;
 		title.innerHTML = `${d.settings.bombs - d.count.flags}`;
+		timerInterval = setInterval(() => {
+			d.timeSpent++;
+			updateTimer();
+		}, 1000);
 	}
 
 	if (d.board[x][y].s === 1 && d.board[x][y].d > 0) {
@@ -287,8 +306,9 @@ const uncoverTile = (x, y, user = true) => {
 
 		if (d.board[x][y].d === -1) {
 			d.gameState = 2;
-			resetPosition();
 
+			resetPosition();
+			clearInterval(timerInterval);
 			title.innerHTML = 'You lost!';
 		} else if (d.board[x][y].d === 0) {
 			squareRun(d.board, x, y, (_, pX, pY) => uncoverTile(pX, pY, false));
@@ -332,8 +352,10 @@ document.addEventListener('mouseup', (event) => {
 
 		if (d.count.covered === d.settings.bombs - d.count.flags && d.gameState === 1) {
 			d.gameState = 3;
-			title.innerHTML = 'You won!';
+
 			resetPosition();
+			clearInterval(timerInterval);
+			title.innerHTML = 'You won!';
 
 			for (let x = 0; x < d.settings.width; x++) {
 				for (let y = 0; y < d.settings.height; y++) {
@@ -383,10 +405,14 @@ const squareRun = (arr, x, y, func) => {
 	}
 };
 
+let timerInterval;
 const setupGame = () => {
+	d.gameState = 0, d.count.flags = 0, d.timeSpent = 0, d.count.covered = d.settings.width * d.settings.height;
+
 	resetPosition();
-	d.gameState = 0, d.count.flags = 0, d.count.covered = d.settings.width * d.settings.height;
+	clearInterval(timerInterval);
 	title.innerHTML = 'Minesweeper';
+	updateTimer();
 
 	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
 	for (let bomb = 0; bomb < d.settings.bombs; bomb++) {
