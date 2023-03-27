@@ -490,11 +490,9 @@ const uncoverTile = (x, y, user = true) => {
 	if (d.gameState === 0) {
 		d.gameState = 1;
 		title.innerHTML = `${d.settings.bombs - d.count.flags}`;
-		const start = Date.now();
 		generateMines(x, y);
 		renderCanvasBackground();
 		clearCanvasInitial();
-		console.log('initial-render', Date.now() - start);
 
 		timerInterval = setInterval(() => {
 			d.timeSpent++;
