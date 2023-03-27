@@ -221,16 +221,11 @@ const updateCanvasForeground = () => {
 				continue;
 
 			const pY = +y;
-			switch (d.board[x][y].s) {
-				case 0:
-					ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
-					break;
-				case 1:
-					ctxForeground.clearRect(pX * d.pixelScale, pY * d.pixelScale, 1 * d.pixelScale, 1 * d.pixelScale);
-					break;
-				case 2:
-					flaggedList.push({ x: pX, y: pY });
-			}
+			ctxForeground.clearRect(pX * d.pixelScale, pY * d.pixelScale, 1 * d.pixelScale, 1 * d.pixelScale);
+			if (d.board[x][y].s === 0)
+				ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+			else if (d.board[x][y].s === 2)
+				flaggedList.push({ x: pX, y: pY });
 		}
 	}
 
