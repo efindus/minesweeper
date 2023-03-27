@@ -1,9 +1,14 @@
-if ('serviceWorker' in navigator)
-	navigator.serviceWorker.register('/sw.js');
+// if ('serviceWorker' in navigator)
+// 	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
 const timer = document.getElementById('timer');
-const canvas = document.getElementById('canvas');
+
+const canvasBundle = document.getElementById('canvas-bundle');
+const canvasInitial = document.getElementById('canvas-initial');
+const canvasForeground = document.getElementById('canvas-foreground');
+const canvasBackground = document.getElementById('canvas-background');
+const canvasEventCapture = document.getElementById('canvas-event-capture');
 
 const flagImage = document.getElementById('flag');
 const mineImage = document.getElementById('mine');
@@ -16,7 +21,15 @@ const restartButton = document.getElementById('restart-button');
 /**
  * @type {CanvasRenderingContext2D}
  */
-const ctx = canvas.getContext('2d');
+const ctxInitial = canvasInitial.getContext('2d');
+/**
+ * @type {CanvasRenderingContext2D}
+ */
+const ctxForeground = canvasForeground.getContext('2d');
+/**
+ * @type {CanvasRenderingContext2D}
+ */
+const ctxBackground = canvasBackground.getContext('2d', { alpha: false });
 
 // gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; board.s: 0 => covered, 1 => uncovered, 2 => flagged
 const d = {
@@ -29,17 +42,20 @@ const d = {
 		x: 0,
 		y: 0,
 	},
-	scale: 0.025,
+	scale: 0.35,
+	defaultScale: 0.35,
+	pixelScale: 100,
+	canvas: {
+		width: 0,
+		height: 0,
+	},
 	last: {
 		pos: {
 			x: 0,
 			y: 0,
 		},
-		canvas: {
-			width: 0,
-			height: 0,
-		},
 		clickTS: 0,
+		animationFrameId: 0,
 	},
 	dragging: false,
 	board: [],
@@ -60,6 +76,7 @@ const d = {
 		prevDiff: -1,
 		cancelOffset: false,
 	},
+	updateList: {},
 };
 
 const updateTimer = ()  => {
@@ -72,161 +89,224 @@ const updateTimer = ()  => {
 	if (minutes !== Math.floor(d.timeSpent / 60))
 		display = `${hours}H ${display}`;
 
-	timer.innerHTML = display;
+	timer.innerText = display;
 };
 
 const random = (min, max) => Math.round(min + (max - min) * Math.random());
 const delay = async time => new Promise(resolve => setTimeout(resolve, time));
 
 const get = (coord, offset = 0, rounded = false) => {
-	let val = (-d.pos[coord] + offset) * d.scale;
+	let val = (offset - d.pos[coord]) / d.scale / d.pixelScale;
 	if (rounded)
 		val = Math.round(val);
 
 	return val;
 };
 
-const renderCanvas = () => {
-	const width = canvas.clientWidth, height = canvas.clientHeight;
-	const x = get('x'), y = get('y'), x2 = get('x', width), y2 = get('y', height);
+const queueUpdate = (x, y) => {
+	d.updateList[x] ??= {};
 
-	// Clear canvas
-	ctx.fillStyle = '#191a19';
-	ctx.fillRect(0, 0, width, height);
+	const e = d.updateList[x][y];
+	if (e)
+		e = false;
+	else
+		d.updateList[x][y] = true;
+};
 
-	if (d.gameState === 0) {
-		// Not started
-		ctx.beginPath();
-		ctx.roundRect((0 - x) / d.scale, (0 - y) / d.scale, d.settings.width / d.scale, d.settings.height / d.scale, 0.1 / d.scale);
+const clearCanvasInitial = () => {
+	ctxInitial.clearRect(0, 0, d.canvas.width, d.canvas.height);
+};
 
-		ctx.fillStyle = '#42a3cd';
-		ctx.fill();
+const renderCanvasInitial = () => {
+	clearCanvasInitial();
 
-		ctx.fillStyle = '#191a19';
-		ctx.font = `400 ${1 / d.scale}px Roboto, sans-serif`;
-		ctx.textAlign = 'center';
-		ctx.fillText(`Click to begin.`, ((d.settings.width / 2) - x) / d.scale, ((d.settings.height / 2) - y) / d.scale);
-		return;
-	}
+	// Not started
+	ctxInitial.beginPath();
+	ctxInitial.roundRect(0, 0, d.settings.width * d.pixelScale, d.settings.height * d.pixelScale, 0.1 * d.pixelScale);
 
-	// Numbers and flags
-	ctx.fillStyle = '#bcd0e1';
-	ctx.font = `400 ${0.5 / d.scale}px Roboto, sans-serif`;
-	ctx.textAlign = 'center';
-	
-	ctx.beginPath();
-	const flags = [];
-	for (let pX = 0; pX < d.settings.width; pX++) {
-		for (let pY = 0; pY < d.settings.height; pY++) {
-			if (d.board[pX][pY].s === 2) {
-				ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
-				flags.push({ x: pX, y: pY });
-			} else if (d.board[pX][pY].s === 1 && d.board[pX][pY].d > 0) {
-				ctx.fillText(`${d.board[pX][pY].d}`, (pX - x + 0.5) / d.scale, (pY - y + 0.678) / d.scale);
-			}
-		}
-	}
+	ctxInitial.fillStyle = '#42a3cd';
+	ctxInitial.fill();
 
-	ctx.fillStyle = '#808e9f';
-	ctx.fill();
+	ctxInitial.fillStyle = '#191a19';
+	ctxInitial.font = `400 ${1 * d.pixelScale}px Roboto, sans-serif`;
+	ctxInitial.textAlign = 'center';
+	ctxInitial.fillText(`Click to begin.`, (d.settings.width / 2) * d.pixelScale, (d.settings.height / 2) * d.pixelScale);
+	return;
+};
 
-	for (const f of flags) {
-		if (d.gameState === 2 && d.board[f.x][f.y].d === -1)
-			ctx.drawImage(mineImage, (f.x + 0.225 - x) / d.scale, (f.y + 0.225 - y) / d.scale, 0.55 / d.scale, 0.55 / d.scale);
-		else
-			ctx.drawImage(flagImage, (f.x + 0.25 - x) / d.scale, (f.y + 0.25 - y) / d.scale, 0.5 / d.scale, 0.5 / d.scale);
-	}
-	
-	// Fog
-	ctx.beginPath();
-	for (let pX = 0; pX < d.settings.width; pX++) {
-		for (let pY = 0; pY < d.settings.height; pY++) {
-			if (d.board[pX][pY].s === 0)
-				ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
-		}
-	}
-
-	ctx.fillStyle = '#42a3cd';
-	ctx.fill();
-
-	if (d.gameState === 2) {
-		ctx.beginPath();
-		const bombs = [];
-		for (let pX = 0; pX < d.settings.width; pX++) {
-			for (let pY = 0; pY < d.settings.height; pY++) {
-				if (d.board[pX][pY].d !== -1)
-					continue;
-
-				if (d.board[pX][pY].s !== 2)
-					bombs.push({ x: pX, y: pY });
-
-				if (d.board[pX][pY].s === 1)
-					ctx.roundRect((pX + 0.075 - x) / d.scale, (pY + 0.075 - y) / d.scale, 0.85 / d.scale, 0.85 / d.scale, 0.1 / d.scale);
-			}
-		}
-
-		ctx.fillStyle = '#cf3f3f';
-		ctx.fill();
-
-		for (const b of bombs)
-			ctx.drawImage(mineImage, (b.x + 0.2 - x) / d.scale, (b.y + 0.2 - y) / d.scale, 0.6 / d.scale, 0.6 / d.scale);
-	}
+const prerenderCanvasBackground = () => {
+	ctxBackground.fillStyle = '#191a19';
+	ctxBackground.fillRect(0, 0, d.canvas.width, d.canvas.height);
 
 	// Grid
-	ctx.lineCap = 'round';
-	ctx.lineWidth = 0.025 / d.scale;
-	ctx.strokeStyle = '#374650';
+	ctxBackground.lineCap = 'round';
+	ctxBackground.lineWidth = 0.025 * d.pixelScale;
+	ctxBackground.strokeStyle = '#374650';
 
-	ctx.beginPath();
+	ctxBackground.beginPath();
 	for (let pX = 1; pX < d.settings.width; pX++) {
 		for (let pY = 0; pY < d.settings.height; pY++) {
-			ctx.moveTo((pX - x) / d.scale, (pY + 0.15 - y) / d.scale);
-			ctx.lineTo((pX - x) / d.scale, (pY + 0.85 - y) / d.scale);
+			ctxBackground.moveTo(pX * d.pixelScale, (pY + 0.15) * d.pixelScale);
+			ctxBackground.lineTo(pX * d.pixelScale, (pY + 0.85) * d.pixelScale);
 		}
 	}
 
 	for (let pY = 1; pY < d.settings.height; pY++) {
 		for (let pX = 0; pX < d.settings.width; pX++) {
-			ctx.moveTo((pX + 0.15 - x) / d.scale, (pY - y) / d.scale);
-			ctx.lineTo((pX + 0.85 - x) / d.scale, (pY - y) / d.scale);
+			ctxBackground.moveTo((pX + 0.15) * d.pixelScale, pY * d.pixelScale);
+			ctxBackground.lineTo((pX + 0.85) * d.pixelScale, pY * d.pixelScale);
 		}
 	}
 
-	ctx.stroke();
+	ctxBackground.stroke();
 };
 
-const updateCanvas = () => {
-	const widthDiff = d.last.canvas.width - canvas.clientWidth, heightDiff = d.last.canvas.height - canvas.clientHeight;
-	if (widthDiff || heightDiff) {
-		canvas.setAttribute('width', canvas.clientWidth * window.devicePixelRatio);
-		canvas.setAttribute('height', canvas.clientHeight * window.devicePixelRatio);
-		ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+const renderCanvasBackground = () => {
+	// Numbers
+	ctxBackground.fillStyle = '#bcd0e1';
+	ctxBackground.font = `400 ${0.5 * d.pixelScale}px Roboto, sans-serif`;
+	ctxBackground.textAlign = 'center';
+	for (let pX = 0; pX < d.settings.width; pX++) {
+		for (let pY = 0; pY < d.settings.height; pY++) {
+			if (d.board[pX][pY].d > 0)
+				ctxBackground.fillText(`${d.board[pX][pY].d}`, (pX + 0.5) * d.pixelScale, (pY + 0.678) * d.pixelScale);
+		}
+	}
+};
 
-		d.last.canvas.width = canvas.clientWidth, d.last.canvas.height = canvas.clientHeight;
-		d.pos.x -= widthDiff / 2, d.pos.y -= heightDiff / 2;
+const renderCanvasForeground = () => {
+	ctxForeground.clearRect(0, 0, d.canvas.width, d.canvas.height);
+
+	// Flags
+	ctxForeground.beginPath();
+	const flags = [];
+	for (let pX = 0; pX < d.settings.width; pX++) {
+		for (let pY = 0; pY < d.settings.height; pY++) {
+			if (d.board[pX][pY].s === 2) {
+				ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+				flags.push({ x: pX, y: pY });
+			}
+		}
 	}
 
-	renderCanvas();
+	ctxForeground.fillStyle = '#808e9f';
+	ctxForeground.fill();
+
+	for (const f of flags) {
+		if (!(d.gameState === 2 && d.board[f.x][f.y].d === -1))
+			ctxForeground.drawImage(flagImage, (f.x + 0.25) * d.pixelScale, (f.y + 0.25) * d.pixelScale, 0.5 * d.pixelScale, 0.5 * d.pixelScale);
+	}
+	
+	// Fog
+	ctxForeground.beginPath();
+	for (let pX = 0; pX < d.settings.width; pX++) {
+		for (let pY = 0; pY < d.settings.height; pY++) {
+			if (d.board[pX][pY].s === 0)
+				ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+		}
+	}
+
+	ctxForeground.fillStyle = '#42a3cd';
+	ctxForeground.fill();
 };
 
-const canvasOnResize = new ResizeObserver(updateCanvas);
-canvasOnResize.observe(canvas);
+const updateCanvasForeground = () => {
+	const flaggedList = [];
+
+	ctxForeground.beginPath();
+	for (const x of Object.keys(d.updateList)) {
+		const pX = +x;
+		for (const y of Object.keys(d.updateList[x])) {
+			if (!d.updateList[x][y])
+				continue;
+
+			const pY = +y;
+			switch (d.board[x][y].s) {
+				case 0:
+					ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+					break;
+				case 1:
+					ctxForeground.clearRect(pX * d.pixelScale, pY * d.pixelScale, 1 * d.pixelScale, 1 * d.pixelScale);
+					break;
+				case 2:
+					flaggedList.push({ x: pX, y: pY });
+			}
+		}
+	}
+
+	ctxForeground.fillStyle = '#42a3cd';
+	ctxForeground.fill();
+
+	ctxForeground.beginPath();
+	for (const pos of flaggedList)
+		ctxForeground.roundRect((pos.x + 0.075) * d.pixelScale, (pos.y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+
+	ctxForeground.fillStyle = '#808e9f';
+	ctxForeground.fill();
+
+	for (const pos of flaggedList)
+		ctxForeground.drawImage(flagImage, (pos.x + 0.25) * d.pixelScale, (pos.y + 0.25) * d.pixelScale, 0.5 * d.pixelScale, 0.5 * d.pixelScale);
+
+	d.updateList = {};
+
+	if (d.gameState === 2) {
+		const bombs = [], uncoveredBombs = [];
+		ctxForeground.beginPath();
+		for (let pX = 0; pX < d.settings.width; pX++) {
+			for (let pY = 0; pY < d.settings.height; pY++) {
+				if (d.board[pX][pY].d !== -1)
+					continue;
+
+				if (d.board[pX][pY].s === 2)
+					ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+				else if (d.board[pX][pY].s === 1)
+					uncoveredBombs.push({ x: pX, y: pY });
+
+				bombs.push({ x: pX, y: pY });
+			}
+		}
+
+		ctxForeground.fillStyle = '#808e9f';
+		ctxForeground.fill();
+
+		ctxForeground.beginPath();
+		for (const pos of uncoveredBombs)
+			ctxForeground.roundRect((pos.x + 0.075) * d.pixelScale, (pos.y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+
+		ctxForeground.fillStyle = '#cf3f3f';
+		ctxForeground.fill();
+
+		for (const b of bombs)
+			ctxForeground.drawImage(mineImage, (b.x + 0.2) * d.pixelScale, (b.y + 0.2) * d.pixelScale, 0.6 * d.pixelScale, 0.6 * d.pixelScale);
+	}
+};
+
+const updatePosition = () => {
+	canvasBundle.style.transform = `translateX(${d.pos.x - (d.canvas.width / 2) * (1 - d.scale)}px) translateY(${d.pos.y - (d.canvas.height / 2) * (1 - d.scale)}px) scale(${d.scale})`;
+};
 
 const constrainPosition = () => {
-	const sX = (d.last.canvas.width / 2), sY = (d.last.canvas.height / 2);
-	if (sX - d.pos.x < 0)
-		d.pos.x = sX;
-	else if (sX - d.pos.x > d.settings.width / d.scale)
-		d.pos.x = -(d.settings.width / d.scale) + sX;
+	const maxX = (canvasEventCapture.clientWidth / 2), maxY = (canvasEventCapture.clientHeight / 2);
+	const minX = maxX - (d.canvas.width * d.scale), minY = maxY - (d.canvas.height * d.scale);
+	if (maxX - d.pos.x < 0)
+		d.pos.x = maxX;
+	else if (minX - d.pos.x > 0)
+		d.pos.x = minX;
 
-	if (sY - d.pos.y < 0)
-		d.pos.y = sY;
-	else if (sY - d.pos.y > d.settings.height / d.scale)
-		d.pos.y = -(d.settings.height / d.scale) + sY;
+	if (maxY - d.pos.y < 0)
+		d.pos.y = maxY;
+	else if (minY - d.pos.y > 0)
+		d.pos.y = minY;
 };
 
-const resetPosition = () => {
-	d.scale = 0.025, d.pos.x = -(d.settings.width / (2 * d.scale)) + (d.last.canvas.width / 2), d.pos.y = -(d.settings.height / (2 * d.scale)) + (d.last.canvas.height / 2);
+const resetPosition = (transition = false) => {
+	if (transition) {
+		canvasBundle.style.transition = 'transform 2s ease';
+		setTimeout(() => canvasBundle.style.transition = '', 2000);
+	}
+
+	d.scale = d.defaultScale, d.pos.x = (canvasEventCapture.clientWidth / 2) - (d.canvas.width * d.scale / 2), d.pos.y = (canvasEventCapture.clientHeight / 2) - (d.canvas.height * d.scale / 2);
+	updatePosition();
 };
 
 let longpressTimeout;
@@ -269,7 +349,6 @@ const pointerMoveHandler = (event) => {
 			d.last.pos.x = offsetX, d.last.pos.y = offsetY;
 		}
 
-		console.log('event', offsetX, offsetY, d.last.pos.x, d.last.pos.y);
 		d.pos.x += (offsetX - d.last.pos.x);
 		d.pos.y += (offsetY - d.last.pos.y);
 
@@ -277,17 +356,17 @@ const pointerMoveHandler = (event) => {
 		d.last.pos.x = offsetX, d.last.pos.y = offsetY;
 
 		if (d.delta.x ** 2 + d.delta.y ** 2 >= 100) {
-			canvas.style.cursor = 'grabbing';
+			canvasEventCapture.style.cursor = 'grabbing';
 			clearTimeout(longpressTimeout);
 		}
 
 		constrainPosition();
-		renderCanvas();
+		updatePosition();
 	}
 };
 
 const pointerCancelHandler = (event) => {
-	canvas.style.cursor = 'default';
+	canvasEventCapture.style.cursor = 'default';
 	for (let i = 0; i < d.touchState.evCache.length; i++) {
 		if (d.touchState.evCache[i].pointerId === event.pointerId) {
 			d.touchState.evCache.splice(i, 1);
@@ -344,7 +423,7 @@ const pointerUpHandler = (event) => {
 		if (d.count.covered === d.settings.bombs - d.count.flags && d.gameState === 1) {
 			d.gameState = 3;
 
-			resetPosition();
+			resetPosition(true);
 			clearInterval(timerInterval);
 			title.innerHTML = 'You won!';
 
@@ -356,29 +435,36 @@ const pointerUpHandler = (event) => {
 			}
 		} 
 
-		renderCanvas();
+		window.requestAnimationFrame((id) => {
+			if (d.last.animationFrameId === id)
+				return;
+
+			d.last.animationFrameId = id;
+			updateCanvasForeground();
+		});
 	}
 	
 };
 
 const zoomHandler = (x, y, delta) => {
 	const preX = get('x', x), preY = get('y', y);
-	d.scale *= (1 + 0.001 * delta);
-	if (d.scale < 0.003)
-		d.scale = 0.003;
-	else if (d.scale > 0.05)
-		d.scale = 0.05;
+	d.scale *= (1 - 0.001 * delta);
+
+	if (d.scale / d.defaultScale < 0.65)
+		d.scale = d.defaultScale * 0.65;
+	else if (d.scale / d.defaultScale > 3.5)
+		d.scale = d.defaultScale * 3.5;
 
 	// Keep mouse position constant
-	d.pos.x = -((preX / d.scale) - x), d.pos.y = -((preY / d.scale) - y);
+	d.pos.x = -((preX * d.pixelScale * d.scale) - x), d.pos.y = -((preY * d.pixelScale * d.scale) - y);
 	constrainPosition();
-	renderCanvas();
+	updatePosition();
 };
 
 document.addEventListener('contextmenu', e => e.preventDefault());
-canvas.addEventListener('wheel', e => zoomHandler(e.offsetX, e.offsetY, e.deltaY));
-canvas.addEventListener('pointerdown', pointerDownHandler);
-canvas.addEventListener('pointermove', pointerMoveHandler);
+canvasEventCapture.addEventListener('wheel', e => zoomHandler(e.offsetX, e.offsetY, e.deltaY));
+canvasEventCapture.addEventListener('pointerdown', pointerDownHandler);
+canvasEventCapture.addEventListener('pointermove', pointerMoveHandler);
 document.addEventListener('pointerup', pointerUpHandler);
 document.addEventListener('pointercancel', pointerCancelHandler);
 document.addEventListener('pointerout', pointerCancelHandler);
@@ -393,6 +479,7 @@ const flagTile = (x, y) => {
 	else
 		d.board[x][y].s = 0, d.count.flags--, d.count.covered++;
 
+	queueUpdate(x, y);
 	title.innerHTML = `${d.settings.bombs - d.count.flags}`;
 };
 
@@ -403,7 +490,11 @@ const uncoverTile = (x, y, user = true) => {
 	if (d.gameState === 0) {
 		d.gameState = 1;
 		title.innerHTML = `${d.settings.bombs - d.count.flags}`;
+		const start = Date.now();
 		generateMines(x, y);
+		renderCanvasBackground();
+		clearCanvasInitial();
+		console.log('initial-render', Date.now() - start);
 
 		timerInterval = setInterval(() => {
 			d.timeSpent++;
@@ -429,13 +520,15 @@ const uncoverTile = (x, y, user = true) => {
 			squareRun(d.board, x, y, (_, pX, pY) => uncoverTile(pX, pY, false));
 		}
 	} else {
-		if (d.board[x][y].s === 0)
+		if (d.board[x][y].s === 0) {
 			d.board[x][y].s = 1, d.count.covered--;
+			queueUpdate(x, y);
+		}
 
 		if (d.board[x][y].d === -1) {
 			d.gameState = 2;
 
-			resetPosition();
+			resetPosition(true);
 			clearInterval(timerInterval);
 			title.innerHTML = 'You lost!';
 		} else if (d.board[x][y].d === 0) {
@@ -519,23 +612,38 @@ let timerInterval;
 const setupGame = () => {
 	d.gameState = 0, d.count.flags = 0, d.timeSpent = 0, d.count.covered = d.settings.width * d.settings.height;
 
-	resetPosition();
 	clearInterval(timerInterval);
 	title.innerHTML = 'Minesweeper';
 	updateTimer();
 
 	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
+	renderCanvasInitial();
+	renderCanvasForeground();
+	prerenderCanvasBackground();
+	resetPosition();
+};
+
+const resizeCanvas = () => {
+	d.canvas.width = d.pixelScale * d.settings.width, d.canvas.height = d.pixelScale * d.settings.height;
+
+	canvasBundle.style.width = `${d.canvas.width}px`, canvasBundle.style.height = `${d.canvas.height}px`;
+	canvasInitial.width = d.canvas.width, canvasInitial.height = d.canvas.height;
+	canvasForeground.width = d.canvas.width, canvasForeground.height = d.canvas.height;
+	canvasBackground.width = d.canvas.width, canvasBackground.height = d.canvas.height;
+
+	d.defaultScale = Math.min((canvasEventCapture.clientWidth - 40) / d.canvas.width, (canvasEventCapture.clientHeight - 40) / d.canvas.height);
 };
 
 const load = () => {
-	if (canvas.clientHeight > canvas.clientWidth)
+	if (canvasEventCapture.clientHeight > canvasEventCapture.clientWidth)
 		[ d.settings.height, d.settings.width ] = [ d.settings.width, d.settings.height ];
 
+	resizeCanvas();
 	setupGame();
 
 	restartButton.onclick = () => {
 		setupGame();
-		renderCanvas();
+		renderCanvasForeground();
 		toggleSettings(true);
 	};
 	menu.onclick = (e) => e.stopPropagation();

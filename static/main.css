@@ -54,7 +54,41 @@ html, body {
 	grid-column: 1 / 4;
 }
 
-#canvas {
+#canvas-container {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	position: relative;
+}
+
+#canvas-bundle {
+	position: relative;
+}
+
+#canvas-bundle > canvas {
+	width: 100%;
+	height: 100%;
+	position: absolute;
+	left: 0px;
+	top: 0px;
+}
+
+#canvas-initial {
+	z-index: 3;
+}
+
+#canvas-foreground {
+	z-index: 2;
+}
+
+#canvas-background {
+	z-index: 1;
+}
+
+#canvas-event-capture {
+	position: absolute;
+	left: 0px;
+	top: 0px;
 	width: 100%;
 	height: 100%;
 }

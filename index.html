@@ -39,7 +39,14 @@
 					<div id="restart-button" class="active menu-row">Restart</div>
 				</div>
 			</div>
-			<canvas id="canvas"></canvas>
+			<div id="canvas-container">
+				<div id="canvas-bundle">
+					<canvas id="canvas-initial"></canvas>
+					<canvas id="canvas-foreground"></canvas>
+					<canvas id="canvas-background"></canvas>
+				</div>
+				<div id="canvas-event-capture"></div>
+			</div>
 		</div>
 		<div class="assets">
 			<img id="flag" src="/static/assets/flag.svg">
