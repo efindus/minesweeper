@@ -65,6 +65,9 @@ const d = {
 		width: 32,
 		height: 18,
 		bombs: 100,
+		longpressDelay: 300,
+		clickTimeout: 250,
+		vibrationLength: 50,
 	},
 	count: {
 		flags: 0,
@@ -351,15 +354,25 @@ const constrainPosition = () => {
 
 let longpressTimeout;
 const pointerDownHandler = (event) => {
-	d.dragging = true, d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
-	d.last.clickTS = Date.now();
-
+	d.dragging = true, d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY;
 	event.pOffsetX = event.offsetX, event.pOffsetY = event.offsetY;
-	d.touchState.evCache.push(event);
-	if (d.touchState.evCache.length > 1)
+
+	if (d.touchState.evCache.length === 0) {
+		d.delta.x = 0, d.delta.y = 0, d.last.clickTS = Date.now();
+
+		// const pX = Math.floor(get('x', event.offsetX)), pY = Math.floor(get('y', event.offsetY));
+		longpressTimeout = setTimeout(() => {
+			pointerUpHandler({
+				offsetX: event.pOffsetX,
+				offsetY: event.pOffsetY,
+			});
+		}, d.settings.longpressDelay + 5);
+	} else {
 		clearTimeout(longpressTimeout);
-	else
-		longpressTimeout = setTimeout(() => navigator.vibrate(100), 250);
+	}
+
+	
+	d.touchState.evCache.push(event);
 };
 
 const pointerMoveHandler = (event) => {
@@ -385,7 +398,7 @@ const pointerMoveHandler = (event) => {
 	}
 
 	if (d.dragging) {
-		if (d.animatingPosition)
+		if (d.animatingPosition && d.gameState !== 2)
 			resetAnimation(true);
 
 		if (d.touchState.cancelOffset) {
@@ -436,10 +449,12 @@ const pointerUpHandler = (event) => {
 			return;
 
 		const clickLength = Date.now() - d.last.clickTS;
+
+		d.delta.x = 69;
 		clearTimeout(longpressTimeout);
 
 		let flag = false;
-		if (event.pointerType === 'mouse' && clickLength < 250) {
+		if (event.pointerType === 'mouse' && clickLength < d.settings.clickTimeout) {
 			if (event.button === 0) {
 				if (d.settings.flaggingMode)
 		 			flag = true;
@@ -448,10 +463,10 @@ const pointerUpHandler = (event) => {
 		 			flag = true;
 			}
 		} else if (event.pointerType === 'touch') {
-			if (clickLength < 250) {
+			if (clickLength < d.settings.longpressDelay) {
 				if (d.settings.flaggingMode)
 					flag = true;
-			} else if (250 <= clickLength) {
+			} else if (d.settings.longpressDelay <= clickLength) {
 				if (!d.settings.flaggingMode)
 					flag = true;
 			}
@@ -508,6 +523,8 @@ const zoomHandler = (x, y, delta, newScale = null) => {
 };
 
 document.addEventListener('contextmenu', e => e.preventDefault());
+// canvasEventCapture.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); });
+// canvasEventCapture.addEventListener('touchend', e => { e.preventDefault(); e.stopPropagation(); });
 canvasEventCapture.addEventListener('wheel', e => zoomHandler(e.offsetX, e.offsetY, e.deltaY));
 canvasEventCapture.addEventListener('pointerdown', pointerDownHandler);
 canvasEventCapture.addEventListener('pointermove', pointerMoveHandler);
