@@ -77,6 +77,7 @@ const d = {
 		cancelOffset: false,
 	},
 	updateList: {},
+	animatingPosition: false,
 };
 
 const updateTimer = ()  => {
@@ -276,7 +277,17 @@ const updateCanvasForeground = () => {
 	}
 };
 
-const updatePosition = () => {
+const resetAnimation = (abort = false) => {
+	canvasBundle.style.transition = '', d.animatingPosition = false;
+}
+
+const updatePosition = (transition = false) => {
+	if (transition) {
+		canvasBundle.style.transition = 'transform 2s ease';
+		d.animatingPosition = true;
+		setTimeout(() => resetAnimation(), 2050);
+	}
+
 	canvasBundle.style.transform = `translateX(${d.pos.x - (d.canvas.width / 2) * (1 - d.scale)}px) translateY(${d.pos.y - (d.canvas.height / 2) * (1 - d.scale)}px) scale(${d.scale})`;
 };
 
@@ -295,13 +306,8 @@ const constrainPosition = () => {
 };
 
 const resetPosition = (transition = false) => {
-	if (transition) {
-		canvasBundle.style.transition = 'transform 2s ease';
-		setTimeout(() => canvasBundle.style.transition = '', 2000);
-	}
-
 	d.scale = d.defaultScale, d.pos.x = (canvasEventCapture.clientWidth / 2) - (d.canvas.width * d.scale / 2), d.pos.y = (canvasEventCapture.clientHeight / 2) - (d.canvas.height * d.scale / 2);
-	updatePosition();
+	updatePosition(transition);
 };
 
 let longpressTimeout;
