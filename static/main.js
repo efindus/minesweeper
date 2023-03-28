@@ -73,7 +73,7 @@ const d = {
 	timeSpent: 0,
 	touchState: {
 		evCache: [],
-		prevDiff: -1,
+		prevDist: -1,
 		cancelOffset: false,
 	},
 	updateList: {},
@@ -314,8 +314,10 @@ const updatePosition = (transition = false, transitionTime = 2) => {
 	canvasBundle.style.transform = `translateX(${d.pos.x - (d.canvas.width / 2) * (1 - d.scale)}px) translateY(${d.pos.y - (d.canvas.height / 2) * (1 - d.scale)}px) scale(${d.scale})`;
 };
 
-const setPosition = (boardX, boardY, scaleModifier) => {
-	d.scale = d.defaultScale * scaleModifier;
+const setPosition = (boardX, boardY, scaleModifier = null) => {
+	if (scaleModifier !== null)
+		d.scale = d.defaultScale * scaleModifier;
+
 	d.pos.x = -((boardX + 0.5) * d.scale * d.pixelScale) + (canvasEventCapture.clientWidth / 2), d.pos.y = -((boardY + 0.5) * d.scale * d.pixelScale) + (canvasEventCapture.clientHeight / 2);
 };
 
@@ -343,6 +345,7 @@ const pointerDownHandler = (event) => {
 	d.dragging = true, d.last.pos.x = event.offsetX, d.last.pos.y = event.offsetY, d.delta.x = 0, d.delta.y = 0;
 	d.last.clickTS = Date.now();
 
+	event.pOffsetX = event.offsetX, event.pOffsetY = event.offsetY;
 	d.touchState.evCache.push(event);
 	if (d.touchState.evCache.length > 1)
 		clearTimeout(longpressTimeout);
@@ -351,6 +354,7 @@ const pointerDownHandler = (event) => {
 };
 
 const pointerMoveHandler = (event) => {
+	event.pOffsetX = event.offsetX, event.pOffsetY = event.offsetY;
 	for (let i = 0; i < d.touchState.evCache.length; i++) {
 		if (event.pointerId == d.touchState.evCache[i].pointerId) {
 			d.touchState.evCache[i] = event;
@@ -360,16 +364,15 @@ const pointerMoveHandler = (event) => {
 
 	let offsetX = event.offsetX, offsetY = event.offsetY;
 	if (d.touchState.evCache.length === 2) {
-		const e1 = d.touchState.evCache[0], e2 = d.touchState.evCache[1];
-		const curDiff = Math.sqrt((e2.clientX - e1.clientX) ** 2 + (e2.clientY - e1.clientY) ** 2);
-		offsetX = (e1.clientX + e2.clientX) / 2, offsetY = (e1.clientY + e2.clientY) / 2;
-	
-		if (d.touchState.prevDiff > 0)
-			zoomHandler(offsetX, offsetY, (d.touchState.prevDiff - curDiff) * 2.5);
-		else if (d.touchState.prevDiff < 0)
+		const e1 = d.touchState.evCache[0], e2 = d.touchState.evCache[1], dist = Math.sqrt((e2.pOffsetX - e1.pOffsetX) ** 2 + (e2.pOffsetY - e1.pOffsetY) ** 2);
+		offsetX = (e1.pOffsetX + e2.pOffsetX) / 2, offsetY = (e1.pOffsetY + e2.pOffsetY) / 2;
+
+		if (d.touchState.prevDist > 0)
+			zoomHandler(offsetX, offsetY, 0, (dist * d.scale) / d.touchState.prevDist);
+		else if (d.touchState.prevDist < 0)
 			d.last.pos.x = offsetX, d.last.pos.y = offsetY;
 
-		d.touchState.prevDiff = curDiff;
+		d.touchState.prevDist = dist;
 	}
 
 	if (d.dragging) {
@@ -407,10 +410,10 @@ const pointerCancelHandler = (event) => {
 	}
 
 	if (d.touchState.evCache.length < 2) {
-		if (d.touchState.prevDiff >= 0)
+		if (d.touchState.prevDist >= 0)
 			d.touchState.cancelOffset = true;
 
-		d.touchState.prevDiff = -1;
+		d.touchState.prevDist = -1;
 	}	
 
 	if (d.touchState.evCache.length === 0)
@@ -478,9 +481,13 @@ const pointerUpHandler = (event) => {
 	
 };
 
-const zoomHandler = (x, y, delta) => {
+const zoomHandler = (x, y, delta, newScale = null) => {
 	const preX = get('x', x), preY = get('y', y);
-	d.scale *= (1 - 0.001 * delta);
+	
+	if (newScale !== null)
+		d.scale = newScale;
+	else
+		d.scale *= (1 - 0.001 * delta);
 
 	if (d.scale / d.defaultScale < 0.65)
 		d.scale = d.defaultScale * 0.65;
