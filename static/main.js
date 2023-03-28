@@ -76,6 +76,15 @@ const d = {
 		prevDist: -1,
 		cancelOffset: false,
 	},
+	colors: {
+		bg: '#0d151d',
+		fog: '#42a3cd',
+		grid: '#384751',
+		flagBg: '#808e9f',
+		mineBg: '#cf3f3f',
+		mineText: '#bcd0e1',
+		initialText: '#0d151d',
+	},
 	updateList: {},
 	animatingPosition: false,
 };
@@ -125,10 +134,10 @@ const renderCanvasInitial = () => {
 	ctxInitial.beginPath();
 	ctxInitial.roundRect(0, 0, d.settings.width * d.pixelScale, d.settings.height * d.pixelScale, 0.1 * d.pixelScale);
 
-	ctxInitial.fillStyle = '#42a3cd';
+	ctxInitial.fillStyle = d.colors.fog;
 	ctxInitial.fill();
 
-	ctxInitial.fillStyle = '#191a19';
+	ctxInitial.fillStyle = d.colors.initialText;
 	ctxInitial.font = `400 ${1 * d.pixelScale}px Roboto, sans-serif`;
 	ctxInitial.textAlign = 'center';
 	ctxInitial.fillText(`Click to begin.`, (d.settings.width / 2) * d.pixelScale, (d.settings.height / 2) * d.pixelScale);
@@ -136,13 +145,13 @@ const renderCanvasInitial = () => {
 };
 
 const prerenderCanvasBackground = () => {
-	ctxBackground.fillStyle = '#191a19';
+	ctxBackground.fillStyle = d.colors.bg;
 	ctxBackground.fillRect(0, 0, d.canvas.width, d.canvas.height);
 
 	// Grid
 	ctxBackground.lineCap = 'round';
 	ctxBackground.lineWidth = 0.025 * d.pixelScale;
-	ctxBackground.strokeStyle = '#374650';
+	ctxBackground.strokeStyle = d.colors.grid;
 
 	ctxBackground.beginPath();
 	for (let pX = 1; pX < d.settings.width; pX++) {
@@ -164,7 +173,7 @@ const prerenderCanvasBackground = () => {
 
 const renderCanvasBackground = () => {
 	// Numbers
-	ctxBackground.fillStyle = '#bcd0e1';
+	ctxBackground.fillStyle = d.colors.mineText;
 	ctxBackground.font = `400 ${0.5 * d.pixelScale}px Roboto, sans-serif`;
 	ctxBackground.textAlign = 'center';
 	for (let pX = 0; pX < d.settings.width; pX++) {
@@ -190,7 +199,7 @@ const renderCanvasForeground = () => {
 		}
 	}
 
-	ctxForeground.fillStyle = '#808e9f';
+	ctxForeground.fillStyle = d.colors.flagBg;
 	ctxForeground.fill();
 
 	for (const f of flags) {
@@ -207,7 +216,7 @@ const renderCanvasForeground = () => {
 		}
 	}
 
-	ctxForeground.fillStyle = '#42a3cd';
+	ctxForeground.fillStyle = d.colors.fog;
 	ctxForeground.fill();
 };
 
@@ -230,14 +239,14 @@ const updateCanvasForeground = () => {
 		}
 	}
 
-	ctxForeground.fillStyle = '#42a3cd';
+	ctxForeground.fillStyle = d.colors.fog;
 	ctxForeground.fill();
 
 	ctxForeground.beginPath();
 	for (const pos of flaggedList)
 		ctxForeground.roundRect((pos.x + 0.075) * d.pixelScale, (pos.y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
 
-	ctxForeground.fillStyle = '#808e9f';
+	ctxForeground.fillStyle = d.colors.flagBg;
 	ctxForeground.fill();
 
 	for (const pos of flaggedList)
@@ -262,14 +271,14 @@ const updateCanvasForeground = () => {
 			}
 		}
 
-		ctxForeground.fillStyle = '#808e9f';
+		ctxForeground.fillStyle = d.colors.flagBg;
 		ctxForeground.fill();
 
 		ctxForeground.beginPath();
 		for (const pos of uncoveredBombs)
 			ctxForeground.roundRect((pos.x + 0.075) * d.pixelScale, (pos.y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
 
-		ctxForeground.fillStyle = '#cf3f3f';
+		ctxForeground.fillStyle = d.colors.mineBg;
 		ctxForeground.fill();
 
 		for (const b of bombs)
@@ -421,8 +430,6 @@ const pointerCancelHandler = (event) => {
 };
 
 const pointerUpHandler = (event) => {
-	pointerCancelHandler(event);
-
 	if (d.touchState.evCache.length < 2 && d.delta.x ** 2 + d.delta.y ** 2 < 100) {
 		const pX = Math.floor(get('x', event.offsetX)), pY = Math.floor(get('y', event.offsetY));
 		if (!(0 <= pX && pX < d.settings.width && 0 <= pY && pY < d.settings.height))
@@ -504,7 +511,8 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 canvasEventCapture.addEventListener('wheel', e => zoomHandler(e.offsetX, e.offsetY, e.deltaY));
 canvasEventCapture.addEventListener('pointerdown', pointerDownHandler);
 canvasEventCapture.addEventListener('pointermove', pointerMoveHandler);
-document.addEventListener('pointerup', pointerUpHandler);
+canvasEventCapture.addEventListener('pointerup', pointerUpHandler);
+document.addEventListener('pointerup', pointerCancelHandler);
 document.addEventListener('pointercancel', pointerCancelHandler);
 document.addEventListener('pointerout', pointerCancelHandler);
 document.addEventListener('pointerleave', pointerCancelHandler);
