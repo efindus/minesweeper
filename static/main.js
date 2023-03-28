@@ -1,5 +1,5 @@
-if ('serviceWorker' in navigator)
-	navigator.serviceWorker.register('/sw.js');
+// if ('serviceWorker' in navigator)
+// 	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
 const timer = document.getElementById('timer');
@@ -304,14 +304,24 @@ const resetAnimation = (abort = false) => {
 }
 
 let resetAnimationTimeout;
-const updatePosition = (transition = false) => {
+const updatePosition = (transition = false, transitionTime = 2) => {
 	if (transition) {
-		canvasBundle.style.transition = 'transform 2s ease', d.animatingPosition = true;
+		canvasBundle.style.transition = `transform ${transitionTime}s ease`, d.animatingPosition = true;
 		clearTimeout(resetAnimationTimeout);
-		resetAnimationTimeout = setTimeout(() => resetAnimation(), 2050);
+		resetAnimationTimeout = setTimeout(() => resetAnimation(), (transitionTime * 1000) + 25);
 	}
 
 	canvasBundle.style.transform = `translateX(${d.pos.x - (d.canvas.width / 2) * (1 - d.scale)}px) translateY(${d.pos.y - (d.canvas.height / 2) * (1 - d.scale)}px) scale(${d.scale})`;
+};
+
+const setPosition = (boardX, boardY, scaleModifier) => {
+	d.scale = d.defaultScale * scaleModifier;
+	d.pos.x = -((boardX + 0.5) * d.scale * d.pixelScale) + (canvasEventCapture.clientWidth / 2), d.pos.y = -((boardY + 0.5) * d.scale * d.pixelScale) + (canvasEventCapture.clientHeight / 2);
+};
+
+const resetPosition = (transition = false) => {
+	setPosition((d.settings.width / 2) - 0.5, (d.settings.height / 2) - 0.5, 1);
+	updatePosition(transition);
 };
 
 const constrainPosition = () => {
@@ -326,11 +336,6 @@ const constrainPosition = () => {
 		d.pos.y = maxY;
 	else if (minY - d.pos.y > 0)
 		d.pos.y = minY;
-};
-
-const resetPosition = (transition = false) => {
-	d.scale = d.defaultScale, d.pos.x = (canvasEventCapture.clientWidth / 2) - (d.canvas.width * d.scale / 2), d.pos.y = (canvasEventCapture.clientHeight / 2) - (d.canvas.height * d.scale / 2);
-	updatePosition(transition);
 };
 
 let longpressTimeout;
@@ -521,9 +526,8 @@ const uncoverTile = (x, y, user = true) => {
 		renderCanvasBackground();
 		clearCanvasInitial();
 
-		// d.scale = d.defaultScale * 0.7;
-		// d.pos.x = (offset - d.pos.x) / d.scale / d.pixelScale;
-		// updatePosition(true);
+		setPosition(x, y, 3);
+		updatePosition(true, 1.4);
 
 		timerInterval = setInterval(() => {
 			d.timeSpent++;
