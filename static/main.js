@@ -277,15 +277,38 @@ const updateCanvasForeground = () => {
 	}
 };
 
+const getElementPosition = (element, noOffset = false) => {
+	const rect = element.getBoundingClientRect();
+	const win = element.ownerDocument.defaultView;
+
+	let bottom = rect.bottom + win.pageYOffset, right = rect.right + win.pageXOffset;
+	if (!noOffset)
+		bottom = document.documentElement.clientHeight - bottom, right = document.documentElement.clientWidth - right;
+
+	return {
+		top: rect.top + win.pageYOffset,
+		left: rect.left + win.pageXOffset,
+		bottom,
+		right,
+	};
+};
+
 const resetAnimation = (abort = false) => {
+	if (abort) {
+		const baseRect = getElementPosition(canvasEventCapture), bundleRect = getElementPosition(canvasBundle);
+		d.pos.x = bundleRect.left - baseRect.left, d.pos.y = bundleRect.top - baseRect.top, d.scale = canvasBundle.getBoundingClientRect().width / d.canvas.width;
+	}
+
+	clearTimeout(resetAnimationTimeout);
 	canvasBundle.style.transition = '', d.animatingPosition = false;
 }
 
+let resetAnimationTimeout;
 const updatePosition = (transition = false) => {
 	if (transition) {
-		canvasBundle.style.transition = 'transform 2s ease';
-		d.animatingPosition = true;
-		setTimeout(() => resetAnimation(), 2050);
+		canvasBundle.style.transition = 'transform 2s ease', d.animatingPosition = true;
+		clearTimeout(resetAnimationTimeout);
+		resetAnimationTimeout = setTimeout(() => resetAnimation(), 2050);
 	}
 
 	canvasBundle.style.transform = `translateX(${d.pos.x - (d.canvas.width / 2) * (1 - d.scale)}px) translateY(${d.pos.y - (d.canvas.height / 2) * (1 - d.scale)}px) scale(${d.scale})`;
@@ -345,6 +368,9 @@ const pointerMoveHandler = (event) => {
 	}
 
 	if (d.dragging) {
+		if (d.animatingPosition)
+			resetAnimation(true);
+
 		if (d.touchState.cancelOffset) {
 			d.touchState.cancelOffset = false;
 			d.last.pos.x = offsetX, d.last.pos.y = offsetY;
@@ -494,6 +520,10 @@ const uncoverTile = (x, y, user = true) => {
 		generateMines(x, y);
 		renderCanvasBackground();
 		clearCanvasInitial();
+
+		// d.scale = d.defaultScale * 0.7;
+		// d.pos.x = (offset - d.pos.x) / d.scale / d.pixelScale;
+		// updatePosition(true);
 
 		timerInterval = setInterval(() => {
 			d.timeSpent++;

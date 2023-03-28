@@ -125,6 +125,7 @@ html, body {
 	right: -10px;
 	width: 100vw;
 	height: 100vh;
+	z-index: 69;
 	background-color: rgba(0, 0, 0, 0.45);
 }
 
@@ -135,7 +136,7 @@ html, body {
 	padding: 4px 0px;
 	margin-top: 8px;
 	display: none;
-	z-index: 1;
+	z-index: 70;
 	flex-direction: column;
 }
 
