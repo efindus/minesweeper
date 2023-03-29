@@ -68,7 +68,7 @@ const d = {
 		longpressDelay: 300,
 		clickTimeout: 250,
 		vibrationLength: 50,
-		animationLength: 300,
+		animationLength: 200,
 	},
 	count: {
 		flags: 0,
@@ -91,7 +91,86 @@ const d = {
 	},
 	updateList: {},
 	animatingPosition: false,
+	animationRequested: false,
 };
+
+class CubicBezier {
+	cx;
+	bx;
+	ax;
+	cy;
+	by;
+	ay;
+
+	constructor(p1x = 0, p1y = 0, p2x = 1, p2y = 1) {
+		this.cx = 3 * p1x;
+		this.bx = 3 * (p2x - p1x) - this.cx;
+		this.ax = 1 - this.cx - this.bx;
+		this.cy = 3 * p1y;
+		this.by = 3 * (p2y - p1y) - this.cy;
+		this.ay = 1 - this.cy - this.by;
+
+		return (t) => this.sampleCurveY(this.solveCurveX(t));
+	}
+
+	sampleCurveX(t) {
+		return ((this.ax * t + this.bx) * t + this.cx) * t;
+	}
+
+	sampleCurveY(t) {
+		return ((this.ay * t + this.by) * t + this.cy) * t;
+	}
+
+	sampleCurveDerivativeX(t) {
+		return (3 * this.ax * t + 2 * this.bx) * t + this.cx;
+	}
+
+	solveCurveX(x) {
+		const epsilon = 1e-6;
+
+		if (x <= 0)
+			return 0;
+
+		if (x >= 1)
+			return 1;
+
+		let t2 = x, x2 = 0, d2 = 0;
+
+		for (let i = 0; i < 8; i += 1) {
+			x2 = this.sampleCurveX(t2) - x;
+			if (Math.abs(x2) < epsilon)
+				return t2;
+
+			d2 = this.sampleCurveDerivativeX(t2);
+
+			if (Math.abs(d2) < epsilon)
+				break;
+
+			t2 -= x2 / d2;
+		}
+
+		let t0 = 0, t1 = 1;
+		t2 = x;
+	
+		while (t0 < t1) {
+			x2 = this.sampleCurveX(t2);
+
+			if (Math.abs(x2 - x) < epsilon)
+				return t2;
+
+			if (x > x2)
+				t0 = t2;
+			else
+				t1 = t2;
+
+			t2 = (t1 - t0) * 0.5 + t0;
+		}
+
+		return t2;
+	}
+}
+
+const bezierEase = new CubicBezier(0.25, 0.1, 0.25, 1.0);
 
 const updateTimer = ()  => {
 	const seconds = d.timeSpent % 60, minutes = Math.floor(d.timeSpent / 60) % 60, hours = Math.floor(Math.floor(d.timeSpent / 60) / 60);
@@ -128,14 +207,18 @@ const dequeueUpdate = (x, y) => {
 };
 
 const requestAnimation = () => {
-	window.requestAnimationFrame((ts) => {
-		const delta = ts - d.last.frameTS;
-		if (d.last.frameTS === ts)
-			return;
+	d.animationRequested = true;
+};
 
-		d.last.frameTS = ts;
+const reqAnimationLoop = (ts) => {
+	const delta = ts - d.last.frameTS;
+	d.last.frameTS = ts;
+	if (d.animationRequested) {
+		d.animationRequested = false;
 		updateCanvasForeground(delta);
-	});
+	}
+
+	window.requestAnimationFrame(reqAnimationLoop);
 };
 
 const clearCanvasInitial = () => {
@@ -237,6 +320,7 @@ const renderCanvasForeground = () => {
 
 const updateCanvasForeground = (delta) => {
 	const flaggedList = [];
+	let ongoingAnimation = false;
 
 	ctxForeground.beginPath();
 	for (const x of Object.keys(d.updateList)) {
@@ -246,8 +330,10 @@ const updateCanvasForeground = (delta) => {
 
 			d.board[x][y].a -= delta;
 			if (d.board[x][y].a < 0) {
-				d.board[x][y].a = -1;
+				d.board[x][y].a = 0;
 				dequeueUpdate(pX, pY);
+			} else {
+				ongoingAnimation = true;
 			}
 
 			ctxForeground.clearRect(pX * d.pixelScale, pY * d.pixelScale, 1 * d.pixelScale, 1 * d.pixelScale);
@@ -268,8 +354,12 @@ const updateCanvasForeground = (delta) => {
 	ctxForeground.fillStyle = d.colors.flagBg;
 	ctxForeground.fill();
 
-	for (const pos of flaggedList)
-		ctxForeground.drawImage(flagImage, (pos.x + 0.25) * d.pixelScale, (pos.y + 0.25) * d.pixelScale, 0.5 * d.pixelScale, 0.5 * d.pixelScale);
+	for (const pos of flaggedList) {
+		const animationProgress = d.settings.animationLength - d.board[pos.x][pos.y].a;
+		const size = 0.7 - 0.2 * bezierEase(animationProgress / d.settings.animationLength), coordinateOffset = (1 - size) / 2;
+
+		ctxForeground.drawImage(flagImage, (pos.x + coordinateOffset) * d.pixelScale, (pos.y + coordinateOffset) * d.pixelScale, size * d.pixelScale, size * d.pixelScale);
+	}
 
 	if (d.gameState === 2) {
 		const bombs = [], uncoveredBombs = [];
@@ -301,6 +391,9 @@ const updateCanvasForeground = (delta) => {
 		for (const b of bombs)
 			ctxForeground.drawImage(mineImage, (b.x + 0.2) * d.pixelScale, (b.y + 0.2) * d.pixelScale, 0.6 * d.pixelScale, 0.6 * d.pixelScale);
 	}
+
+	if (ongoingAnimation)
+		requestAnimation();
 };
 
 const getElementPosition = (element, noOffset = false) => {
@@ -691,7 +784,7 @@ const setupGame = () => {
 	title.innerHTML = 'Minesweeper';
 	updateTimer();
 
-	d.board = genBoard({ d: -2, s: 0, a: -1 }, d.settings.width, d.settings.height);
+	d.board = genBoard({ d: -2, s: 0, a: 0 }, d.settings.width, d.settings.height);
 	renderCanvasInitial();
 	renderCanvasForeground();
 	prerenderCanvasBackground();
@@ -715,6 +808,7 @@ const load = () => {
 
 	resizeCanvas();
 	setupGame();
+	reqAnimationLoop();
 
 	restartButton.onclick = () => {
 		setupGame();
