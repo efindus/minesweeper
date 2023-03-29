@@ -1,5 +1,5 @@
-if ('serviceWorker' in navigator)
-	navigator.serviceWorker.register('/sw.js');
+// if ('serviceWorker' in navigator)
+// 	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
 const timer = document.getElementById('timer');
@@ -31,7 +31,7 @@ const ctxForeground = canvasForeground.getContext('2d');
  */
 const ctxBackground = canvasBackground.getContext('2d', { alpha: false });
 
-// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; board.s: 0 => covered, 1 => uncovered, 2 => flagged
+// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; board.s: 0 => covered, 1 => uncovered, 2 => flagged; board.a => -1 => no animation, >0 => time left (max time === d.settings.animationLength, if larger waits before starting)
 const d = {
 	gameState: 0,
 	pos: {
@@ -55,7 +55,7 @@ const d = {
 			y: 0,
 		},
 		clickTS: 0,
-		animationFrameId: 0,
+		frameTS: 0,
 	},
 	dragging: false,
 	board: [],
@@ -68,6 +68,7 @@ const d = {
 		longpressDelay: 300,
 		clickTimeout: 250,
 		vibrationLength: 50,
+		animationLength: 300,
 	},
 	count: {
 		flags: 0,
@@ -116,14 +117,25 @@ const get = (coord, offset = 0, rounded = false) => {
 	return val;
 };
 
-const queueUpdate = (x, y) => {
-	d.updateList[x] ??= {};
+const queueUpdate = (x, y, animation = d.settings.animationLength) => {
+	d.updateList[x] ??= {}, d.updateList[x][y] = true, d.board[x][y].a = animation;
+};
 
-	const e = d.updateList[x][y];
-	if (e)
-		e = false;
-	else
-		d.updateList[x][y] = true;
+const dequeueUpdate = (x, y) => {
+	delete d.updateList[x][y];
+	if (!Object.keys(d.updateList[x]).length)
+		delete d.updateList[x];
+};
+
+const requestAnimation = () => {
+	window.requestAnimationFrame((ts) => {
+		const delta = ts - d.last.frameTS;
+		if (d.last.frameTS === ts)
+			return;
+
+		d.last.frameTS = ts;
+		updateCanvasForeground(delta);
+	});
 };
 
 const clearCanvasInitial = () => {
@@ -223,17 +235,21 @@ const renderCanvasForeground = () => {
 	ctxForeground.fill();
 };
 
-const updateCanvasForeground = () => {
+const updateCanvasForeground = (delta) => {
 	const flaggedList = [];
 
 	ctxForeground.beginPath();
 	for (const x of Object.keys(d.updateList)) {
 		const pX = +x;
 		for (const y of Object.keys(d.updateList[x])) {
-			if (!d.updateList[x][y])
-				continue;
-
 			const pY = +y;
+
+			d.board[x][y].a -= delta;
+			if (d.board[x][y].a < 0) {
+				d.board[x][y].a = -1;
+				dequeueUpdate(pX, pY);
+			}
+
 			ctxForeground.clearRect(pX * d.pixelScale, pY * d.pixelScale, 1 * d.pixelScale, 1 * d.pixelScale);
 			if (d.board[x][y].s === 0)
 				ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
@@ -254,8 +270,6 @@ const updateCanvasForeground = () => {
 
 	for (const pos of flaggedList)
 		ctxForeground.drawImage(flagImage, (pos.x + 0.25) * d.pixelScale, (pos.y + 0.25) * d.pixelScale, 0.5 * d.pixelScale, 0.5 * d.pixelScale);
-
-	d.updateList = {};
 
 	if (d.gameState === 2) {
 		const bombs = [], uncoveredBombs = [];
@@ -486,19 +500,15 @@ const pointerUpHandler = (event) => {
 
 			for (let x = 0; x < d.settings.width; x++) {
 				for (let y = 0; y < d.settings.height; y++) {
-					if (d.board[x][y].s === 0)
+					if (d.board[x][y].s === 0) {
 						d.board[x][y].s = 2;
+						queueUpdate(x, y);
+					}
 				}
 			}
 		} 
 
-		window.requestAnimationFrame((id) => {
-			if (d.last.animationFrameId === id)
-				return;
-
-			d.last.animationFrameId = id;
-			updateCanvasForeground();
-		});
+		requestAnimation();
 	}
 	
 };
@@ -681,7 +691,7 @@ const setupGame = () => {
 	title.innerHTML = 'Minesweeper';
 	updateTimer();
 
-	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
+	d.board = genBoard({ d: -2, s: 0, a: -1 }, d.settings.width, d.settings.height);
 	renderCanvasInitial();
 	renderCanvasForeground();
 	prerenderCanvasBackground();
