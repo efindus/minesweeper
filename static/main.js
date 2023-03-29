@@ -31,7 +31,7 @@ const ctxForeground = canvasForeground.getContext('2d');
  */
 const ctxBackground = canvasBackground.getContext('2d', { alpha: false });
 
-// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; board.s: 0 => covered, 1 => uncovered, 2 => flagged; board.a => -1 => no animation, >0 => time left (max time === d.settings.animationLength, if larger waits before starting)
+// gameState: 0 => not started, 1 => ongoing, 2 => lost, 3 => won; board.d: -1 => bomb, 0-8 => bomb count; board.s: 0 => covered, 1 => uncovered, 2 => flagged
 const d = {
 	gameState: 0,
 	pos: {
@@ -68,7 +68,7 @@ const d = {
 		longpressDelay: 300,
 		clickTimeout: 250,
 		vibrationLength: 50,
-		animationLength: 200,
+		animationLength: 220,
 	},
 	count: {
 		flags: 0,
@@ -90,6 +90,7 @@ const d = {
 		initialText: '#0d151d',
 	},
 	updateList: {},
+	animationBoard: [],
 	animatingPosition: false,
 	animationRequested: false,
 };
@@ -196,8 +197,54 @@ const get = (coord, offset = 0, rounded = false) => {
 	return val;
 };
 
-const queueUpdate = (x, y, animation = d.settings.animationLength) => {
-	d.updateList[x] ??= {}, d.updateList[x][y] = true, d.board[x][y].a = animation;
+const getDir = (x, y, pX, pY) => {
+	let direction = '';
+	if (y < pY)
+		direction += 's';
+	else if (pY < y)
+		direction += 'n';
+
+	if (x < pX)
+		direction += 'e';
+	else if (pX < x)
+		direction += 'w';
+
+	return direction;
+};
+
+const queueUpdate = (x, y, from = null, propagate = false, animation = d.settings.animationLength) => {
+	const c = d.animationBoard[x][y];
+	d.updateList[x] ??= {};
+
+	let alreadyQueued = false;
+	if (d.updateList[x][y] === true)
+		alreadyQueued = true;
+	else
+		d.updateList[x][y] = true;
+
+	if (from !== null)
+		c.from = from;
+	else if (!alreadyQueued)
+		c.from = d.board[x][y].d;
+
+	if (!propagate)
+		return;
+
+	squareRun(d.animationBoard, x, y, (val, pX, pY) => {
+		queueUpdate(pX, pY);
+
+		val[getDir(pX, pY, x, y)] = animation;
+
+		if (x === pX) {
+			for (const offset of [ -1, 1 ])
+				val[getDir(pX, pY, x + offset, y)] = animation;
+		} else if (y === pY) {
+			for (const offset of [ -1, 1 ])
+				val[getDir(pX, pY, x, y + offset)] = animation;
+		}
+	});
+
+	c.c = c.n = c.ne = c.e = c.se = c.s = c.sw = c.w = c.nw = animation;
 };
 
 const dequeueUpdate = (x, y) => {
@@ -285,77 +332,118 @@ const renderCanvasBackground = () => {
 const renderCanvasForeground = () => {
 	ctxForeground.clearRect(0, 0, d.canvas.width, d.canvas.height);
 
-	// Flags
 	ctxForeground.beginPath();
-	const flags = [];
-	for (let pX = 0; pX < d.settings.width; pX++) {
-		for (let pY = 0; pY < d.settings.height; pY++) {
-			if (d.board[pX][pY].s === 2) {
-				ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
-				flags.push({ x: pX, y: pY });
-			}
-		}
-	}
-
-	ctxForeground.fillStyle = d.colors.flagBg;
-	ctxForeground.fill();
-
-	for (const f of flags) {
-		if (!(d.gameState === 2 && d.board[f.x][f.y].d === -1))
-			ctxForeground.drawImage(flagImage, (f.x + 0.25) * d.pixelScale, (f.y + 0.25) * d.pixelScale, 0.5 * d.pixelScale, 0.5 * d.pixelScale);
-	}
-	
-	// Fog
-	ctxForeground.beginPath();
-	for (let pX = 0; pX < d.settings.width; pX++) {
-		for (let pY = 0; pY < d.settings.height; pY++) {
-			if (d.board[pX][pY].s === 0)
-				ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
-		}
-	}
+	ctxForeground.roundRect(0.075 * d.pixelScale, 0.075 * d.pixelScale, (d.settings.width - 0.075 * 2) * d.pixelScale, (d.settings.height - 0.075 * 2) * d.pixelScale, 0.1 * d.pixelScale);
 
 	ctxForeground.fillStyle = d.colors.fog;
 	ctxForeground.fill();
 };
 
 const updateCanvasForeground = (delta) => {
-	const flaggedList = [];
+	// console.log(delta);
+	const flaggedList = [], coveredList = [];
 	let ongoingAnimation = false;
 
 	ctxForeground.beginPath();
 	for (const x of Object.keys(d.updateList)) {
 		const pX = +x;
 		for (const y of Object.keys(d.updateList[x])) {
-			const pY = +y;
+			const pY = +y, c = d.animationBoard[x][y];
 
-			d.board[x][y].a -= delta;
-			if (d.board[x][y].a < 0) {
-				d.board[x][y].a = 0;
-				dequeueUpdate(pX, pY);
-			} else {
-				ongoingAnimation = true;
+			let updateLeft = 0;
+			for (const direction of [ 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw', 'c' ]) {
+				c[direction] -= delta;
+				if (c[direction] < 0)
+					c[direction] = 0;
+				else
+					updateLeft++;
 			}
+
+			if (updateLeft)
+				ongoingAnimation = true;
+			else
+				dequeueUpdate(pX, pY);
 
 			ctxForeground.clearRect(pX * d.pixelScale, pY * d.pixelScale, 1 * d.pixelScale, 1 * d.pixelScale);
 			if (d.board[x][y].s === 0)
-				ctxForeground.roundRect((pX + 0.075) * d.pixelScale, (pY + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+				coveredList.push({ x: pX, y: pY });
 			else if (d.board[x][y].s === 2)
 				flaggedList.push({ x: pX, y: pY });
 		}
 	}
 
-	ctxForeground.fillStyle = d.colors.fog;
-	ctxForeground.fill();
+	for (const color of [ d.colors.fog, d.colors.flagBg ]) {
+		const cList = (color === d.colors.fog ? coveredList : flaggedList);
 
-	ctxForeground.beginPath();
-	for (const pos of flaggedList)
-		ctxForeground.roundRect((pos.x + 0.075) * d.pixelScale, (pos.y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+		ctxForeground.beginPath();
+		for (const { x, y } of cList) {
+			const c = d.animationBoard[x][y], type = d.board[x][y].s;
 
-	ctxForeground.fillStyle = d.colors.flagBg;
-	ctxForeground.fill();
+			ctxForeground.roundRect((x + 0.075) * d.pixelScale, (y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+
+			squareRun(d.animationBoard, x, y, (val, pX, pY) => {
+				if (d.board[pX][pY].s === 1)
+					return;
+
+				if (x !== pX && y !== pY) {
+					if (d.board[x][pY].s === type && d.board[pX][y].s === type && d.board[pX][pY].s === type) {
+						const dir = getDir(x, y, pX, pY), dirY = dir[0], dirX = dir[1];
+						const a = (d.settings.animationLength - c[dir]), aX = (d.settings.animationLength - c[dirX]), aY = (d.settings.animationLength - c[dirY])
+
+						let progX, progY = 1, isCorner = (0 === c[dirX] && c[dirX] === c[dirY]);
+						if (isCorner)
+							progX = bezierEase(a / d.settings.animationLength);
+						else
+							progX = bezierEase(aX / d.settings.animationLength), progY = bezierEase(aY / d.settings.animationLength);
+
+						do {
+							let rX = x, rY = y;
+
+							if (x < pX)
+								rX += 0.5 + (0.25 * progX);
+							else if (pX < x)
+								rX += 0.25 - (0.25 * progX);
+
+							if (y < pY)
+								rY += 0.5 + (0.25 * progY);
+							else if (pY < y)
+								rY += 0.25 - (0.25 * progY);
+
+							ctxForeground.rect(rX * d.pixelScale, rY * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
+
+							[ progX, progY ] = [ progY, progX ];
+						} while (isCorner && !(isCorner = false));
+					}
+
+					return;
+				}
+
+				const prog = bezierEase((d.settings.animationLength - c[getDir(x, y, pX, pY)]) / d.settings.animationLength);
+				let multiplier = prog;
+				if (d.board[pX][pY].s !== type)
+					multiplier = 1 - prog;
+
+				let rX = x, rY = y, rW, rH;
+				if (x < pX) {
+					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.5 + (0.25 * multiplier);
+				} else if (pX < x) {
+					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.25 - (0.25 * multiplier);
+				} else if (y < pY) {
+					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.5 + (0.25 * multiplier);
+				} else if (pY < y) {
+					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.25 - (0.25 * multiplier);
+				}
+
+				ctxForeground.rect(rX * d.pixelScale, rY * d.pixelScale, rW * d.pixelScale, rH * d.pixelScale);
+			});
+		}
+
+		ctxForeground.fillStyle = color;
+		ctxForeground.fill();
+	}
 
 	for (const pos of flaggedList) {
-		const animationProgress = d.settings.animationLength - d.board[pos.x][pos.y].a;
+		const animationProgress = d.settings.animationLength - d.animationBoard[pos.x][pos.y].c;
 		const size = 0.7 - 0.2 * bezierEase(animationProgress / d.settings.animationLength), coordinateOffset = (1 - size) / 2;
 
 		ctxForeground.drawImage(flagImage, (pos.x + coordinateOffset) * d.pixelScale, (pos.y + coordinateOffset) * d.pixelScale, size * d.pixelScale, size * d.pixelScale);
@@ -595,7 +683,7 @@ const pointerUpHandler = (event) => {
 				for (let y = 0; y < d.settings.height; y++) {
 					if (d.board[x][y].s === 0) {
 						d.board[x][y].s = 2;
-						queueUpdate(x, y);
+						queueUpdate(x, y, 0, true);
 					}
 				}
 			}
@@ -641,12 +729,13 @@ const flagTile = (x, y) => {
 	if (d.board[x][y].s === 1)
 		return;
 
+	let from;
 	if (d.board[x][y].s === 0)
-		d.board[x][y].s = 2, d.count.flags++, d.count.covered--;
+		d.board[x][y].s = 2, d.count.flags++, d.count.covered--, from = 0;
 	else
-		d.board[x][y].s = 0, d.count.flags--, d.count.covered++;
+		d.board[x][y].s = 0, d.count.flags--, d.count.covered++, from = 2;
 
-	queueUpdate(x, y);
+	queueUpdate(x, y, from, true);
 	title.innerHTML = `${d.settings.bombs - d.count.flags}`;
 };
 
@@ -690,7 +779,7 @@ const uncoverTile = (x, y, user = true) => {
 	} else {
 		if (d.board[x][y].s === 0) {
 			d.board[x][y].s = 1, d.count.covered--;
-			queueUpdate(x, y);
+			queueUpdate(x, y, 0, true);
 		}
 
 		if (d.board[x][y].d === -1) {
@@ -784,7 +873,8 @@ const setupGame = () => {
 	title.innerHTML = 'Minesweeper';
 	updateTimer();
 
-	d.board = genBoard({ d: -2, s: 0, a: 0 }, d.settings.width, d.settings.height);
+	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
+	d.animationBoard = genBoard({ n: 0, ne: 0, e: 0, se: 0, s: 0, sw: 0, w: 0, nw: 0, c: 0, from: 0 }, d.settings.width, d.settings.height);
 	renderCanvasInitial();
 	renderCanvasForeground();
 	prerenderCanvasBackground();
