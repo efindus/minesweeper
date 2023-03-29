@@ -1,5 +1,5 @@
-if ('serviceWorker' in navigator)
-	navigator.serviceWorker.register('/sw.js');
+// if ('serviceWorker' in navigator)
+// 	navigator.serviceWorker.register('/sw.js');
 
 const title = document.getElementById('title');
 const timer = document.getElementById('timer');
@@ -418,20 +418,21 @@ const updateCanvasForeground = (delta) => {
 					return;
 				}
 
-				const prog = bezierEase((d.settings.animationLength - c[getDir(x, y, pX, pY)]) / d.settings.animationLength);
-				let multiplier = prog;
-				if (d.board[pX][pY].s !== type)
-					multiplier = 1 - prog;
+				let progress = c[getDir(x, y, pX, pY)];
+				if (d.board[pX][pY].s === type)
+					progress = d.settings.animationLength - progress;
+				
+				const prog = bezierEase(progress / d.settings.animationLength);
 
 				let rX = x, rY = y, rW, rH;
 				if (x < pX) {
-					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.5 + (0.25 * multiplier);
+					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.5 + (0.25 * prog);
 				} else if (pX < x) {
-					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.25 - (0.25 * multiplier);
+					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.25 - (0.25 * prog);
 				} else if (y < pY) {
-					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.5 + (0.25 * multiplier);
+					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.5 + (0.25 * prog);
 				} else if (pY < y) {
-					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.25 - (0.25 * multiplier);
+					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.25 - (0.25 * prog);
 				}
 
 				ctxForeground.rect(rX * d.pixelScale, rY * d.pixelScale, rW * d.pixelScale, rH * d.pixelScale);
