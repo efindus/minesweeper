@@ -68,7 +68,7 @@ const d = {
 		longpressDelay: 300,
 		clickTimeout: 250,
 		vibrationLength: 50,
-		animationLength: 220,
+		animationLength: 2200,
 	},
 	count: {
 		flags: 0,
@@ -341,7 +341,7 @@ const renderCanvasForeground = () => {
 
 const updateCanvasForeground = (delta) => {
 	// console.log(delta);
-	const flaggedList = [], coveredList = [];
+	const flaggedList = [], coveredList = [], aL = d.settings.animationLength;
 	let ongoingAnimation = false;
 
 	ctxForeground.beginPath();
@@ -377,7 +377,7 @@ const updateCanvasForeground = (delta) => {
 
 		ctxForeground.beginPath();
 		for (const { x, y } of cList) {
-			const c = d.animationBoard[x][y], type = d.board[x][y].s;
+			const c = d.animationBoard[x][y], b = d.board[x][y];
 
 			ctxForeground.roundRect((x + 0.075) * d.pixelScale, (y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
 
@@ -386,15 +386,24 @@ const updateCanvasForeground = (delta) => {
 					return;
 
 				if (x !== pX && y !== pY) {
-					if (d.board[x][pY].s === type && d.board[pX][y].s === type && d.board[pX][pY].s === type) {
+					const bX = d.board[pX][y], bY = d.board[x][pY], bXY = d.board[pX][pY],
+					      cX = d.animationBoard[pX][y], cY = d.animationBoard[x][pY], cXY = d.animationBoard[pX][pY];
+					if (b.s === bX.s && bX.s === bY.s && bY.s === bXY.s ||
+					    b.s === bX.s && bX.s === bY.s && bY.s === cXY.from || 
+					    c.from === bX.s && bX.s === bY.s && bY.s === bXY.s ||
+					    b.s === cY.from && cY.from === bX.s && bX.s === bXY.s && bY.s !== 1 ||
+					    b.s === cX.from && cX.from === bY.s && bY.s === bXY.s && bX.s !== 1) {
 						const dir = getDir(x, y, pX, pY), dirY = dir[0], dirX = dir[1];
-						const a = (d.settings.animationLength - c[dir]), aX = (d.settings.animationLength - c[dirX]), aY = (d.settings.animationLength - c[dirY])
 
-						let progX, progY = 1, isCorner = (0 === c[dirX] && c[dirX] === c[dirY]);
+						let a = c[dir], aX = c[dirX], aY = c[dirY];
+						if (b.s === bXY.s)
+							a = aL - a, aX = aL - aX, aY = aL - aY;
+
+						let progX, progY = 1, isCorner = (0 === c[dirX] && c[dirX] === c[dirY] && c[dir] !== 0);
 						if (isCorner)
-							progX = bezierEase(a / d.settings.animationLength);
+							progX = bezierEase(a / aL);
 						else
-							progX = bezierEase(aX / d.settings.animationLength), progY = bezierEase(aY / d.settings.animationLength);
+							progX = bezierEase(aX / aL), progY = bezierEase(aY / aL);
 
 						do {
 							let rX = x, rY = y;
@@ -419,10 +428,10 @@ const updateCanvasForeground = (delta) => {
 				}
 
 				let progress = c[getDir(x, y, pX, pY)];
-				if (d.board[pX][pY].s === type)
-					progress = d.settings.animationLength - progress;
+				if (b.s === d.board[pX][pY].s)
+					progress = aL - progress;
 				
-				const prog = bezierEase(progress / d.settings.animationLength);
+				const prog = bezierEase(progress / aL);
 
 				let rX = x, rY = y, rW, rH;
 				if (x < pX) {
@@ -444,8 +453,8 @@ const updateCanvasForeground = (delta) => {
 	}
 
 	for (const pos of flaggedList) {
-		const animationProgress = d.settings.animationLength - d.animationBoard[pos.x][pos.y].c;
-		const size = 0.7 - 0.2 * bezierEase(animationProgress / d.settings.animationLength), coordinateOffset = (1 - size) / 2;
+		const animationProgress = aL - d.animationBoard[pos.x][pos.y].c;
+		const size = 0.7 - 0.2 * bezierEase(animationProgress / aL), coordinateOffset = (1 - size) / 2;
 
 		ctxForeground.drawImage(flagImage, (pos.x + coordinateOffset) * d.pixelScale, (pos.y + coordinateOffset) * d.pixelScale, size * d.pixelScale, size * d.pixelScale);
 	}
@@ -875,7 +884,7 @@ const setupGame = () => {
 	updateTimer();
 
 	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
-	d.animationBoard = genBoard({ n: 0, ne: 0, e: 0, se: 0, s: 0, sw: 0, w: 0, nw: 0, c: 0, from: 0 }, d.settings.width, d.settings.height);
+	d.animationBoard = genBoard({ n: 0, ne: 0, e: 0, se: 0, s: 0, sw: 0, w: 0, nw: 0, c: 0, from: -1 }, d.settings.width, d.settings.height);
 	renderCanvasInitial();
 	renderCanvasForeground();
 	prerenderCanvasBackground();
