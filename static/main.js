@@ -68,7 +68,7 @@ const d = {
 		longpressDelay: 300,
 		clickTimeout: 250,
 		vibrationLength: 50,
-		animationLength: 2200,
+		animationLength: 220,
 	},
 	count: {
 		flags: 0,
@@ -200,16 +200,23 @@ const get = (coord, offset = 0, rounded = false) => {
 const getDir = (x, y, pX, pY) => {
 	let direction = '';
 	if (y < pY)
-		direction += 's';
+		direction += 'b';
 	else if (pY < y)
-		direction += 'n';
+		direction += 't';
 
 	if (x < pX)
-		direction += 'e';
+		direction += 'r';
 	else if (pX < x)
-		direction += 'w';
+		direction += 'l';
 
 	return direction;
+};
+
+const recoverOffset = (offset) => {
+	if (offset < 0.5)
+		return 0.25 - offset;
+	else
+		return offset - 0.5;
 };
 
 const queueUpdate = (x, y, from = null, propagate = false, animation = d.settings.animationLength) => {
@@ -224,27 +231,20 @@ const queueUpdate = (x, y, from = null, propagate = false, animation = d.setting
 
 	if (from !== null)
 		c.from = from;
-	else if (!alreadyQueued)
-		c.from = d.board[x][y].d;
+
+	c.keep = animation;
 
 	if (!propagate)
 		return;
 
 	squareRun(d.animationBoard, x, y, (val, pX, pY) => {
+		if (x === pX || y === pY)
+			val[getDir(pX, pY, x, y)] = animation;
+
 		queueUpdate(pX, pY);
-
-		val[getDir(pX, pY, x, y)] = animation;
-
-		if (x === pX) {
-			for (const offset of [ -1, 1 ])
-				val[getDir(pX, pY, x + offset, y)] = animation;
-		} else if (y === pY) {
-			for (const offset of [ -1, 1 ])
-				val[getDir(pX, pY, x, y + offset)] = animation;
-		}
 	});
 
-	c.c = c.n = c.ne = c.e = c.se = c.s = c.sw = c.w = c.nw = animation;
+	c.c = c.t = c.r = c.b = c.l = animation;
 };
 
 const dequeueUpdate = (x, y) => {
@@ -351,13 +351,16 @@ const updateCanvasForeground = (delta) => {
 			const pY = +y, c = d.animationBoard[x][y];
 
 			let updateLeft = 0;
-			for (const direction of [ 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw', 'c' ]) {
-				c[direction] -= delta;
-				if (c[direction] < 0)
-					c[direction] = 0;
+			for (const animation of [ 't', 'r', 'b', 'l', 'c', 'keep' ]) {
+				c[animation] -= delta;
+				if (c[animation] < 0)
+					c[animation] = 0;
 				else
 					updateLeft++;
 			}
+
+			if (c.c === 0)
+				c.from = -1;
 
 			if (updateLeft)
 				ongoingAnimation = true;
@@ -375,9 +378,36 @@ const updateCanvasForeground = (delta) => {
 	for (const color of [ d.colors.fog, d.colors.flagBg ]) {
 		const cList = (color === d.colors.fog ? coveredList : flaggedList);
 
-		ctxForeground.beginPath();
 		for (const { x, y } of cList) {
 			const c = d.animationBoard[x][y], b = d.board[x][y];
+
+			squareRun(d.animationBoard, x, y, (val, pX, pY) => {
+				if (x !== pX && y !== pY || d.board[pX][pY].s === 1)
+					return;
+
+				const direction = getDir(x, y, pX, pY);
+
+				let progress = c[direction];
+				if (b.s === d.board[pX][pY].s)
+					progress = aL - progress;
+
+				let offset = 0.25 * bezierEase(progress / aL), pos;
+				if (x < pX)
+					pos = 0.5 + offset;
+				else if (pX < x)
+					pos = 0.25 - offset;
+				else if (y < pY)
+					pos = 0.5 + offset;
+				else if (pY < y)
+					pos = 0.25 - offset;
+
+				c[`p${direction}`] = pos;
+			});
+		}
+
+		ctxForeground.beginPath();
+		for (const { x, y } of cList) {
+			const b = d.board[x][y], c = d.animationBoard[x][y];
 
 			ctxForeground.roundRect((x + 0.075) * d.pixelScale, (y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
 
@@ -388,61 +418,45 @@ const updateCanvasForeground = (delta) => {
 				if (x !== pX && y !== pY) {
 					const bX = d.board[pX][y], bY = d.board[x][pY], bXY = d.board[pX][pY],
 					      cX = d.animationBoard[pX][y], cY = d.animationBoard[x][pY], cXY = d.animationBoard[pX][pY];
-					if (b.s === bX.s && bX.s === bY.s && bY.s === bXY.s ||
-					    b.s === bX.s && bX.s === bY.s && bY.s === cXY.from || 
-					    c.from === bX.s && bX.s === bY.s && bY.s === bXY.s ||
-					    b.s === cY.from && cY.from === bX.s && bX.s === bXY.s && bY.s !== 1 ||
-					    b.s === cX.from && cX.from === bY.s && bY.s === bXY.s && bX.s !== 1) {
-						const dir = getDir(x, y, pX, pY), dirY = dir[0], dirX = dir[1];
 
-						let a = c[dir], aX = c[dirX], aY = c[dirY];
-						if (b.s === bXY.s)
-							a = aL - a, aX = aL - aX, aY = aL - aY;
+					const dir = getDir(x, y, pX, pY), dirY = dir[0], dirX = dir[1];
 
-						let progX, progY = 1, isCorner = (0 === c[dirX] && c[dirX] === c[dirY] && c[dir] !== 0);
-						if (isCorner)
-							progX = bezierEase(a / aL);
-						else
-							progX = bezierEase(aX / aL), progY = bezierEase(aY / aL);
+					let invertedCorner = (b.s === bX.s && bX.s === bY.s && bY.s !== bXY.s ||
+					                      b.s === bX.s && bX.s === bY.s && bY.s === bXY.s && cXY.from !== -1);
 
-						do {
-							let rX = x, rY = y;
+					if (invertedCorner) {
+						let offsetCX = recoverOffset(cX[`p${dirY}`]), offsetCY = recoverOffset(cY[`p${dirX}`]);
+						if (x < pX)
+							offsetCX = 0.5 + offsetCX;
+						else if (pX < x)
+							offsetCX = 0.25 - offsetCX;
 
-							if (x < pX)
-								rX += 0.5 + (0.25 * progX);
-							else if (pX < x)
-								rX += 0.25 - (0.25 * progX);
+						if (y < pY)
+							offsetCY = 0.5 + offsetCY;
+						else if (pY < y)
+							offsetCY = 0.25 - offsetCY;
 
-							if (y < pY)
-								rY += 0.5 + (0.25 * progY);
-							else if (pY < y)
-								rY += 0.25 - (0.25 * progY);
+						if (cY.from === -1)
+							ctxForeground.rect((x + c[`p${dirX}`]) * d.pixelScale, (y + offsetCY) * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
 
-							ctxForeground.rect(rX * d.pixelScale, rY * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
-
-							[ progX, progY ] = [ progY, progX ];
-						} while (isCorner && !(isCorner = false));
+						if (cX.from === -1)
+							ctxForeground.rect((x + offsetCX) * d.pixelScale, (y + c[`p${dirY}`]) * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
+					} else {
+						ctxForeground.rect((x + c[`p${dirX}`]) * d.pixelScale, (y + c[`p${dirY}`]) * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
 					}
 
 					return;
 				}
 
-				let progress = c[getDir(x, y, pX, pY)];
-				if (b.s === d.board[pX][pY].s)
-					progress = aL - progress;
-				
-				const prog = bezierEase(progress / aL);
-
-				let rX = x, rY = y, rW, rH;
-				if (x < pX) {
-					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.5 + (0.25 * prog);
-				} else if (pX < x) {
-					rH = 0.85, rW = 0.25, rY += 0.075, rX += 0.25 - (0.25 * prog);
-				} else if (y < pY) {
-					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.5 + (0.25 * prog);
-				} else if (pY < y) {
-					rW = 0.85, rH = 0.25, rX += 0.075, rY += 0.25 - (0.25 * prog);
-				}
+				let pos = c[`p${getDir(x, y, pX, pY)}`], rX = x, rY = y, rW, rH;
+				if (x < pX)
+					rH = 0.85, rW = 0.25, rY += 0.075, rX += pos;
+				else if (pX < x)
+					rH = 0.85, rW = 0.25, rY += 0.075, rX += pos;
+				else if (y < pY)
+					rW = 0.85, rH = 0.25, rX += 0.075, rY += pos;
+				else if (pY < y)
+					rW = 0.85, rH = 0.25, rX += 0.075, rY += pos;
 
 				ctxForeground.rect(rX * d.pixelScale, rY * d.pixelScale, rW * d.pixelScale, rH * d.pixelScale);
 			});
@@ -566,12 +580,14 @@ const pointerDownHandler = (event) => {
 		d.delta.x = 0, d.delta.y = 0, d.last.clickTS = Date.now();
 
 		// const pX = Math.floor(get('x', event.offsetX)), pY = Math.floor(get('y', event.offsetY));
-		longpressTimeout = setTimeout(() => {
-			pointerUpHandler({
-				offsetX: event.pOffsetX,
-				offsetY: event.pOffsetY,
-			});
-		}, d.settings.longpressDelay + 5);
+		if (event.pointerType === 'touch') {
+			longpressTimeout = setTimeout(() => {
+				pointerUpHandler({
+					offsetX: event.pOffsetX,
+					offsetY: event.pOffsetY,
+				});
+			}, d.settings.longpressDelay + 5);
+		}
 	} else {
 		clearTimeout(longpressTimeout);
 	}
@@ -884,7 +900,7 @@ const setupGame = () => {
 	updateTimer();
 
 	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
-	d.animationBoard = genBoard({ n: 0, ne: 0, e: 0, se: 0, s: 0, sw: 0, w: 0, nw: 0, c: 0, from: -1 }, d.settings.width, d.settings.height);
+	d.animationBoard = genBoard({ t: 0, r: 0, b: 0, l: 0, pt: 0.5, pr: 0.5, pb: 0.5, pl: 0.5, c: 0, from: -1, keep: 0, }, d.settings.width, d.settings.height);
 	renderCanvasInitial();
 	renderCanvasForeground();
 	prerenderCanvasBackground();
