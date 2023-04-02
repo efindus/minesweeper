@@ -382,7 +382,7 @@ const updateCanvasForeground = (delta) => {
 			const c = d.animationBoard[x][y], b = d.board[x][y];
 
 			squareRun(d.animationBoard, x, y, (val, pX, pY) => {
-				if (x !== pX && y !== pY || d.board[pX][pY].s === 1)
+				if (x !== pX && y !== pY)
 					return;
 
 				const direction = getDir(x, y, pX, pY);
@@ -390,6 +390,8 @@ const updateCanvasForeground = (delta) => {
 				let progress = c[direction];
 				if (b.s === d.board[pX][pY].s)
 					progress = aL - progress;
+				else if (d.board[pX][pY].s === 1)
+					progress = 0;
 
 				let offset = 0.25 * bezierEase(progress / aL), pos;
 				if (x < pX)
@@ -424,6 +426,10 @@ const updateCanvasForeground = (delta) => {
 					let invertedCorner = (b.s === bX.s && bX.s === bY.s && bY.s !== bXY.s ||
 					                      b.s === bX.s && bX.s === bY.s && bY.s === bXY.s && cXY.from !== -1);
 
+					let specialCorner = ((b.s !== bX.s && cX.from !== -1 || b.s !== bY.s && cY.from !== -1) && bX.s !== bY.s && b.s !== bXY.s);
+					let noCorner = (b.s === bXY.s && bX.s === bY.s && b.s !== bX.s ||
+					                specialCorner && cXY.from === -1);
+
 					if (invertedCorner) {
 						let offsetCX = recoverOffset(cX[`p${dirY}`]), offsetCY = recoverOffset(cY[`p${dirX}`]);
 						if (x < pX)
@@ -436,13 +442,21 @@ const updateCanvasForeground = (delta) => {
 						else if (pY < y)
 							offsetCY = 0.25 - offsetCY;
 
-						if (cY.from === -1)
+						if (c.from === -1 && cY.from === -1)
 							ctxForeground.rect((x + c[`p${dirX}`]) * d.pixelScale, (y + offsetCY) * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
 
-						if (cX.from === -1)
+						if (c.from === -1 && cX.from === -1)
 							ctxForeground.rect((x + offsetCX) * d.pixelScale, (y + c[`p${dirY}`]) * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
-					} else {
-						ctxForeground.rect((x + c[`p${dirX}`]) * d.pixelScale, (y + c[`p${dirY}`]) * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
+					} else if (!noCorner) {
+						let rX = x + c[`p${dirX}`], rY = y + c[`p${dirY}`];
+						if (specialCorner && bX.s !== 1 && bY.s !== 1) {
+							if (b.s !== bX.s && cX.from !== -1 && c[dirX] > cY[dirX])
+								rX = x + cY[`p${dirX}`];
+							else if (b.s !== bY.s && cY.from !== -1 && c[dirY] > cX[dirY])
+								rY = y + cX[`p${dirY}`];
+						}
+
+						ctxForeground.rect(rX * d.pixelScale, rY * d.pixelScale, 0.25 * d.pixelScale, 0.25 * d.pixelScale);
 					}
 
 					return;
