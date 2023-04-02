@@ -73,10 +73,6 @@ html, body {
 	top: 0px;
 }
 
-#canvas-initial {
-	z-index: 3;
-}
-
 #canvas-foreground {
 	z-index: 2;
 }

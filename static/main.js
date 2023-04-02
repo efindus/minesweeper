@@ -5,7 +5,6 @@ const title = document.getElementById('title');
 const timer = document.getElementById('timer');
 
 const canvasBundle = document.getElementById('canvas-bundle');
-const canvasInitial = document.getElementById('canvas-initial');
 const canvasForeground = document.getElementById('canvas-foreground');
 const canvasBackground = document.getElementById('canvas-background');
 const canvasEventCapture = document.getElementById('canvas-event-capture');
@@ -18,10 +17,6 @@ const settingsToggle = document.getElementById('settings-toggle');
 const settingsClose = document.getElementById('settings-close');
 const restartButton = document.getElementById('restart-button');
 
-/**
- * @type {CanvasRenderingContext2D}
- */
-const ctxInitial = canvasInitial.getContext('2d');
 /**
  * @type {CanvasRenderingContext2D}
  */
@@ -268,27 +263,6 @@ const reqAnimationLoop = (ts) => {
 	window.requestAnimationFrame(reqAnimationLoop);
 };
 
-const clearCanvasInitial = () => {
-	ctxInitial.clearRect(0, 0, d.canvas.width, d.canvas.height);
-};
-
-const renderCanvasInitial = () => {
-	clearCanvasInitial();
-
-	// Not started
-	ctxInitial.beginPath();
-	ctxInitial.roundRect(0, 0, d.settings.width * d.pixelScale, d.settings.height * d.pixelScale, 0.1 * d.pixelScale);
-
-	ctxInitial.fillStyle = d.colors.fog;
-	ctxInitial.fill();
-
-	ctxInitial.fillStyle = d.colors.initialText;
-	ctxInitial.font = `400 ${1 * d.pixelScale}px Roboto, sans-serif`;
-	ctxInitial.textAlign = 'center';
-	ctxInitial.fillText(`Click to begin.`, (d.settings.width / 2) * d.pixelScale, (d.settings.height / 2) * d.pixelScale);
-	return;
-};
-
 const prerenderCanvasBackground = () => {
 	ctxBackground.fillStyle = d.colors.bg;
 	ctxBackground.fillRect(0, 0, d.canvas.width, d.canvas.height);
@@ -337,6 +311,13 @@ const renderCanvasForeground = () => {
 
 	ctxForeground.fillStyle = d.colors.fog;
 	ctxForeground.fill();
+
+	if (d.gameState === 0) {
+		ctxForeground.fillStyle = d.colors.initialText;
+		ctxForeground.font = `400 ${1 * d.pixelScale}px Roboto, sans-serif`;
+		ctxForeground.textAlign = 'center';
+		ctxForeground.fillText(`Click to begin.`, (d.settings.width / 2) * d.pixelScale, (d.settings.height / 2) * d.pixelScale);
+	}
 };
 
 const updateCanvasForeground = (delta) => {
@@ -344,7 +325,6 @@ const updateCanvasForeground = (delta) => {
 	const flaggedList = [], coveredList = [], aL = d.settings.animationLength;
 	let ongoingAnimation = false;
 
-	ctxForeground.beginPath();
 	for (const x of Object.keys(d.updateList)) {
 		const pX = +x;
 		for (const y of Object.keys(d.updateList[x])) {
@@ -788,7 +768,7 @@ const uncoverTile = (x, y, user = true) => {
 		title.innerHTML = `${d.settings.bombs - d.count.flags}`;
 		generateMines(x, y);
 		renderCanvasBackground();
-		clearCanvasInitial();
+		renderCanvasForeground();
 
 		setPosition(x, y, 3);
 		updatePosition(true, 1.4);
@@ -915,7 +895,6 @@ const setupGame = () => {
 
 	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
 	d.animationBoard = genBoard({ t: 0, r: 0, b: 0, l: 0, pt: 0.5, pr: 0.5, pb: 0.5, pl: 0.5, c: 0, from: -1, keep: 0, }, d.settings.width, d.settings.height);
-	renderCanvasInitial();
 	renderCanvasForeground();
 	prerenderCanvasBackground();
 	resetPosition();
@@ -925,7 +904,6 @@ const resizeCanvas = () => {
 	d.canvas.width = d.pixelScale * d.settings.width, d.canvas.height = d.pixelScale * d.settings.height;
 
 	canvasBundle.style.width = `${d.canvas.width}px`, canvasBundle.style.height = `${d.canvas.height}px`;
-	canvasInitial.width = d.canvas.width, canvasInitial.height = d.canvas.height;
 	canvasForeground.width = d.canvas.width, canvasForeground.height = d.canvas.height;
 	canvasBackground.width = d.canvas.width, canvasBackground.height = d.canvas.height;
 
