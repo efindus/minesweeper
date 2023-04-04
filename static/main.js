@@ -808,9 +808,6 @@ const uncoverTile = (x, y, user = true, animationOffset = 0) => {
 		if (d.board[x][y].s === 0) {
 			d.board[x][y].s = 1, d.count.covered--;
 			queueUpdate(x, y, 0, true, d.settings.disappearAnimationLength + animationOffset);
-
-			if (!user)
-				return;
 		}
 
 		if (d.board[x][y].d === -1) {
@@ -819,7 +816,7 @@ const uncoverTile = (x, y, user = true, animationOffset = 0) => {
 			resetPosition(true);
 			clearInterval(timerInterval);
 			title.innerHTML = 'You lost!';
-		} else if (d.board[x][y].d === 0) {
+		} else if (d.board[x][y].d === 0 && animationOffset === 0) {
 			const queue = [];
 			queue.push({ x, y, ao: 0 });
 			d.visitedTime++;
@@ -830,8 +827,8 @@ const uncoverTile = (x, y, user = true, animationOffset = 0) => {
 				uncoverTile(current.x, current.y, false, current.ao);
 
 				if (d.board[current.x][current.y].d === 0) {
-					squareRun(d.board, current.x, current.y, (_, pX, pY) => {
-						if (d.visitedBoard[pX][pY] !== d.visitedTime) {
+					squareRun(d.board, current.x, current.y, (val, pX, pY) => {
+						if (d.visitedBoard[pX][pY] !== d.visitedTime && val.s === 0) {
 							d.visitedBoard[pX][pY] = d.visitedTime;
 							queue.push({ x: pX, y: pY, ao: current.ao + 45 });
 						}
