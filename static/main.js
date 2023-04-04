@@ -63,7 +63,8 @@ const d = {
 		longpressDelay: 300,
 		clickTimeout: 250,
 		vibrationLength: 50,
-		animationLength: 220,
+		convertAnimationLength: 235,
+		disappearAnimationLength: 450,
 	},
 	count: {
 		flags: 0,
@@ -166,7 +167,7 @@ class CubicBezier {
 	}
 }
 
-const bezierEase = new CubicBezier(0.25, 0.1, 0.25, 1.0);
+const bezierEase = new CubicBezier(0.25, 0.1, 0.25, 1.0), bezierScale = new CubicBezier(0.7, -0.5, 0.5, 1);
 
 const updateTimer = ()  => {
 	const seconds = d.timeSpent % 60, minutes = Math.floor(d.timeSpent / 60) % 60, hours = Math.floor(Math.floor(d.timeSpent / 60) / 60);
@@ -214,7 +215,7 @@ const recoverOffset = (offset) => {
 		return offset - 0.5;
 };
 
-const queueUpdate = (x, y, from = null, propagate = false, animation = d.settings.animationLength) => {
+const queueUpdate = (x, y, from = null, propagate = false, animation = d.settings.convertAnimationLength) => {
 	const c = d.animationBoard[x][y];
 	d.updateList[x] ??= {};
 
@@ -322,7 +323,7 @@ const renderCanvasForeground = () => {
 
 const updateCanvasForeground = (delta) => {
 	// console.log(delta);
-	const lists = [ [], [], [] ], aL = d.settings.animationLength;
+	const lists = [ [], [], [] ], caL = d.settings.convertAnimationLength, daL = d.settings.disappearAnimationLength;
 	let ongoingAnimation = false;
 
 	for (const x of Object.keys(d.updateList)) {
@@ -354,8 +355,8 @@ const updateCanvasForeground = (delta) => {
 
 	const colors = [ d.colors.fog, d.colors.fog, d.colors.flagBg ];
 	for (let index = 0; index < 3; index++) {
-		if (index === 1)
-			continue;
+		// if (index === 1)
+		// 	continue;
 
 		for (const { x, y } of lists[index]) {
 			const c = d.animationBoard[x][y], b = d.board[x][y];
@@ -368,11 +369,11 @@ const updateCanvasForeground = (delta) => {
 
 				let progress = c[direction];
 				if (b.s === d.board[pX][pY].s)
-					progress = aL - progress;
-				else if (d.board[pX][pY].s === 1 && (d.animationBoard[pX][pY].from === -1 || b.s !== 0))
+					progress = caL - progress;
+				else if (d.board[pX][pY].s === 1)
 					progress = 0;
 
-				let offset = 0.25 * bezierEase(progress / aL), pos;
+				let offset = 0.25 * bezierEase(progress / caL), pos;
 				if (x < pX)
 					pos = 0.5 + offset;
 				else if (pX < x)
@@ -390,7 +391,14 @@ const updateCanvasForeground = (delta) => {
 		for (const { x, y } of lists[index]) {
 			const b = d.board[x][y], c = d.animationBoard[x][y];
 
-			ctxForeground.roundRect((x + 0.075) * d.pixelScale, (y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+			if (index !== 1) {
+				ctxForeground.roundRect((x + 0.075) * d.pixelScale, (y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
+			} else {
+				const rectScale = 0.85 - 0.85 * bezierScale((daL - c.c) / daL);
+				ctxForeground.roundRect((x + (1 - rectScale) / 2) * d.pixelScale, (y + (1 - rectScale) / 2) * d.pixelScale, rectScale * d.pixelScale, rectScale * d.pixelScale, 0.1 * d.pixelScale);
+
+				continue;
+			}
 
 			squareRun(d.animationBoard, x, y, (val, pX, pY) => {
 				if (x !== pX && y !== pY) {
@@ -457,8 +465,8 @@ const updateCanvasForeground = (delta) => {
 	}
 
 	for (const pos of lists[2]) {
-		const animationProgress = aL - d.animationBoard[pos.x][pos.y].c;
-		const size = 0.7 - 0.2 * bezierEase(animationProgress / aL), coordinateOffset = (1 - size) / 2;
+		const animationProgress = caL - d.animationBoard[pos.x][pos.y].c;
+		const size = 0.7 - 0.2 * bezierEase(animationProgress / caL), coordinateOffset = (1 - size) / 2;
 
 		ctxForeground.drawImage(flagImage, (pos.x + coordinateOffset) * d.pixelScale, (pos.y + coordinateOffset) * d.pixelScale, size * d.pixelScale, size * d.pixelScale);
 	}
@@ -795,7 +803,7 @@ const uncoverTile = (x, y, user = true) => {
 	} else {
 		if (d.board[x][y].s === 0) {
 			d.board[x][y].s = 1, d.count.covered--;
-			queueUpdate(x, y, 0, true);
+			queueUpdate(x, y, 0, true, d.settings.disappearAnimationLength);
 		}
 
 		if (d.board[x][y].d === -1) {
