@@ -86,6 +86,8 @@ const d = {
 		initialText: '#0d151d',
 	},
 	updateList: {},
+	visitedBoard: [],
+	visitedTime: 0,
 	animationBoard: [],
 	animatingPosition: false,
 	animationRequested: false,
@@ -240,7 +242,12 @@ const queueUpdate = (x, y, from = null, propagate = false, animation = d.setting
 		queueUpdate(pX, pY);
 	});
 
-	c.c = c.t = c.r = c.b = c.l = animation;
+	if (alreadyQueued && c.c !== 0) {
+		for (const prop of [ 'c', 't', 'r', 'b', 'l' ])
+			c[prop] = Math.min(c[prop], animation);
+	} else {
+		c.c = c.t = c.r = c.b = c.l = animation;
+	}
 };
 
 const dequeueUpdate = (x, y) => {
@@ -355,9 +362,6 @@ const updateCanvasForeground = (delta) => {
 
 	const colors = [ d.colors.fog, d.colors.fog, d.colors.flagBg ];
 	for (let index = 0; index < 3; index++) {
-		// if (index === 1)
-		// 	continue;
-
 		for (const { x, y } of lists[index]) {
 			const c = d.animationBoard[x][y], b = d.board[x][y];
 
@@ -763,7 +767,7 @@ const flagTile = (x, y) => {
 	title.innerHTML = `${d.settings.bombs - d.count.flags}`;
 };
 
-const uncoverTile = (x, y, user = true) => {
+const uncoverTile = (x, y, user = true, animationOffset = 0) => {
 	if (d.board[x][y].s === 2 || (!user && d.board[x][y].s === 1))
 		return;
 
@@ -803,7 +807,10 @@ const uncoverTile = (x, y, user = true) => {
 	} else {
 		if (d.board[x][y].s === 0) {
 			d.board[x][y].s = 1, d.count.covered--;
-			queueUpdate(x, y, 0, true, d.settings.disappearAnimationLength);
+			queueUpdate(x, y, 0, true, d.settings.disappearAnimationLength + animationOffset);
+
+			if (!user)
+				return;
 		}
 
 		if (d.board[x][y].d === -1) {
@@ -813,7 +820,24 @@ const uncoverTile = (x, y, user = true) => {
 			clearInterval(timerInterval);
 			title.innerHTML = 'You lost!';
 		} else if (d.board[x][y].d === 0) {
-			squareRun(d.board, x, y, (_, pX, pY) => uncoverTile(pX, pY, false));
+			const queue = [];
+			queue.push({ x, y, ao: 0 });
+			d.visitedTime++;
+			d.visitedBoard[x][y] = d.visitedTime;
+
+			while (queue.length) {
+				const current = queue.shift();
+				uncoverTile(current.x, current.y, false, current.ao);
+
+				if (d.board[current.x][current.y].d === 0) {
+					squareRun(d.board, current.x, current.y, (_, pX, pY) => {
+						if (d.visitedBoard[pX][pY] !== d.visitedTime) {
+							d.visitedBoard[pX][pY] = d.visitedTime;
+							queue.push({ x: pX, y: pY, ao: current.ao + 45 });
+						}
+					});
+				}
+			}
 		}
 	}
 };
@@ -899,6 +923,7 @@ const setupGame = () => {
 
 	d.board = genBoard({ d: -2, s: 0 }, d.settings.width, d.settings.height);
 	d.animationBoard = genBoard({ t: 0, r: 0, b: 0, l: 0, pt: 0.5, pr: 0.5, pb: 0.5, pl: 0.5, c: 0, from: -1, keep: 0, }, d.settings.width, d.settings.height);
+	d.visitedTime = 0, d.visitedBoard = genBoard(0, d.settings.width, d.settings.height);
 	renderCanvasForeground();
 	prerenderCanvasBackground();
 	resetPosition();
