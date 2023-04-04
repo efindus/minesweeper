@@ -322,7 +322,7 @@ const renderCanvasForeground = () => {
 
 const updateCanvasForeground = (delta) => {
 	// console.log(delta);
-	const flaggedList = [], coveredList = [], aL = d.settings.animationLength;
+	const lists = [ [], [], [] ], aL = d.settings.animationLength;
 	let ongoingAnimation = false;
 
 	for (const x of Object.keys(d.updateList)) {
@@ -348,17 +348,16 @@ const updateCanvasForeground = (delta) => {
 				dequeueUpdate(pX, pY);
 
 			ctxForeground.clearRect(pX * d.pixelScale, pY * d.pixelScale, 1 * d.pixelScale, 1 * d.pixelScale);
-			if (d.board[x][y].s === 0)
-				coveredList.push({ x: pX, y: pY });
-			else if (d.board[x][y].s === 2)
-				flaggedList.push({ x: pX, y: pY });
+			lists[d.board[x][y].s].push({ x: pX, y: pY });
 		}
 	}
 
-	for (const color of [ d.colors.fog, d.colors.flagBg ]) {
-		const cList = (color === d.colors.fog ? coveredList : flaggedList);
+	const colors = [ d.colors.fog, d.colors.fog, d.colors.flagBg ];
+	for (let index = 0; index < 3; index++) {
+		if (index === 1)
+			continue;
 
-		for (const { x, y } of cList) {
+		for (const { x, y } of lists[index]) {
 			const c = d.animationBoard[x][y], b = d.board[x][y];
 
 			squareRun(d.animationBoard, x, y, (val, pX, pY) => {
@@ -370,7 +369,7 @@ const updateCanvasForeground = (delta) => {
 				let progress = c[direction];
 				if (b.s === d.board[pX][pY].s)
 					progress = aL - progress;
-				else if (d.board[pX][pY].s === 1)
+				else if (d.board[pX][pY].s === 1 && (d.animationBoard[pX][pY].from === -1 || b.s !== 0))
 					progress = 0;
 
 				let offset = 0.25 * bezierEase(progress / aL), pos;
@@ -388,15 +387,12 @@ const updateCanvasForeground = (delta) => {
 		}
 
 		ctxForeground.beginPath();
-		for (const { x, y } of cList) {
+		for (const { x, y } of lists[index]) {
 			const b = d.board[x][y], c = d.animationBoard[x][y];
 
 			ctxForeground.roundRect((x + 0.075) * d.pixelScale, (y + 0.075) * d.pixelScale, 0.85 * d.pixelScale, 0.85 * d.pixelScale, 0.1 * d.pixelScale);
 
 			squareRun(d.animationBoard, x, y, (val, pX, pY) => {
-				if (d.board[pX][pY].s === 1)
-					return;
-
 				if (x !== pX && y !== pY) {
 					const bX = d.board[pX][y], bY = d.board[x][pY], bXY = d.board[pX][pY],
 					      cX = d.animationBoard[pX][y], cY = d.animationBoard[x][pY], cXY = d.animationBoard[pX][pY];
@@ -456,11 +452,11 @@ const updateCanvasForeground = (delta) => {
 			});
 		}
 
-		ctxForeground.fillStyle = color;
+		ctxForeground.fillStyle = colors[index];
 		ctxForeground.fill();
 	}
 
-	for (const pos of flaggedList) {
+	for (const pos of lists[2]) {
 		const animationProgress = aL - d.animationBoard[pos.x][pos.y].c;
 		const size = 0.7 - 0.2 * bezierEase(animationProgress / aL), coordinateOffset = (1 - size) / 2;
 
